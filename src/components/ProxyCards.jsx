@@ -5,10 +5,11 @@ import {
 import AddressCell from './AddressCell';
 import { nanoToTon, timeAgo } from '../lib/formatters';
 
-export default function ProxyCards({ proxies, clients, workers }) {
+export default function ProxyCards({ proxies, clients, workers, cocoonWallets }) {
   const proxyList = proxies ? [...proxies.values()] : [];
   const clientList = clients ? [...clients.values()] : [];
   const workerList = workers ? [...workers.values()] : [];
+  const walletList = cocoonWallets ? [...cocoonWallets.values()] : [];
 
   return (
     <Card>
@@ -27,6 +28,11 @@ export default function ProxyCards({ proxies, clients, workers }) {
             <Tab color="gray.400" _selected={{ color: 'white', bg: 'orange.700' }}>
               Workers ({workerList.length})
             </Tab>
+            {walletList.length > 0 && (
+              <Tab color="gray.400" _selected={{ color: 'white', bg: 'teal.700' }}>
+                Cocoon Wallets ({walletList.length})
+              </Tab>
+            )}
           </TabList>
 
           <TabPanels>
@@ -106,6 +112,23 @@ export default function ProxyCards({ proxies, clients, workers }) {
                 </SimpleGrid>
               )}
             </TabPanel>
+            {/* Cocoon Wallets Tab */}
+            {walletList.length > 0 && (
+              <TabPanel p={0}>
+                <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} spacing={3}>
+                  {walletList.map(cw => (
+                    <ContractCard
+                      key={cw.address}
+                      address={cw.address}
+                      balance={cw.balance}
+                      state={cw.state}
+                      badge="cocoon_wallet"
+                      badgeColor="teal"
+                    />
+                  ))}
+                </SimpleGrid>
+              </TabPanel>
+            )}
           </TabPanels>
         </Tabs>
       </CardBody>

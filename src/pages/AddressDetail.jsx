@@ -6,6 +6,7 @@ import {
   Tr, Th, Td, Divider, useClipboard, Tooltip, IconButton, Link,
 } from '@chakra-ui/react';
 import { getAddressInfo, getTransactions } from '../api/toncenter';
+import { getAccountInfo, classifyCocoonContract } from '../api/tonapi';
 import { ROOT_CONTRACT } from '../constants';
 import { nanoToTon, timeAgo, classifyTransaction, truncateAddress } from '../lib/formatters';
 import AddressCell from '../components/AddressCell';
@@ -22,6 +23,8 @@ const TYPE_COLORS = {
 export default function AddressDetail({ networkData }) {
   const { address } = useParams();
   const [info, setInfo] = useState(null);
+  const [contractType, setContractType] = useState(null);
+  const [interfaces, setInterfaces] = useState([]);
   const [txs, setTxs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -38,6 +41,16 @@ export default function AddressDetail({ networkData }) {
       ]);
       setInfo(addrInfo);
       setTxs(addrTxs);
+
+      // Get contract type from tonapi.io
+      try {
+        const tonapiInfo = await getAccountInfo(address);
+        setContractType(classifyCocoonContract(tonapiInfo));
+        setInterfaces(tonapiInfo.interfaces || []);
+      } catch {
+        setContractType(null);
+        setInterfaces([]);
+      }
     } catch (err) {
       setError(err.message);
     } finally {
@@ -69,8 +82,8 @@ export default function AddressDetail({ networkData }) {
     }
   }
 
-  // Determine role from network data
-  const networkRole = getNetworkRole(address, networkData);
+  // Determine role — prefer tonapi contract type, fallback to network data
+  const networkRole = getNetworkRole(address, networkData, contractType);
 
   if (loading) {
     return (
@@ -126,6 +139,11 @@ export default function AddressDetail({ networkData }) {
                       {networkRole.role}
                     </Badge>
                   )}
+                  {interfaces.length > 0 && interfaces.map(iface => (
+                    <Badge key={iface} colorScheme="gray" variant="outline" fontSize="xs">
+                      {iface}
+                    </Badge>
+                  ))}
                   <Badge
                     colorScheme={info?.state === 'active' ? 'green' : info?.state === 'frozen' ? 'blue' : 'gray'}
                     variant="subtle"
@@ -342,13 +360,25 @@ export default function AddressDetail({ networkData }) {
   );
 }
 
-function getNetworkRole(address, networkData) {
+function getNetworkRole(address, networkData, contractType) {
   const base = { role: 'unknown', color: 'gray', rootAddress: ROOT_CONTRACT };
 
-  if (!networkData) return base;
-
-  if (address === ROOT_CONTRACT) {
+  // Use tonapi contract type as primary source
+  if (contractType === 'root' || address === ROOT_CONTRACT) {
     return { ...base, role: 'root', color: 'yellow' };
+  }
+  if (contractType === 'cocoon_wallet') {
+    return { ...base, role: 'cocoon_wallet', color: 'teal' };
+  }
+  if (contractType === 'wallet') {
+    return { ...base, role: 'wallet', color: 'gray' };
+  }
+
+  if (!networkData) {
+    if (contractType === 'proxy') return { ...base, role: 'proxy', color: 'purple' };
+    if (contractType === 'client') return { ...base, role: 'client', color: 'cyan' };
+    if (contractType === 'worker') return { ...base, role: 'worker', color: 'orange' };
+    return base;
   }
 
   // Check if it's a proxy
