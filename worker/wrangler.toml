@@ -1,0 +1,15 @@
+name = "cocoon-dashboard-api"
+main = "src/index.js"
+compatibility_date = "2024-12-01"
+account_id = "48c22e79108c451f30c9a1ebdbb6256a"
+
+[[kv_namespaces]]
+binding = "COCOON_KV"
+id = "bf2b105bb8e9409ba378ce76fe93c2d7"
+
+# Cron trigger — run discovery every 5 minutes
+[triggers]
+crons = ["*/5 * * * *"]
+
+# Environment variables (secrets set via `wrangler secret put`)
+# TONCENTER_API_KEY — set via: npx wrangler secret put TONCENTER_API_KEY
