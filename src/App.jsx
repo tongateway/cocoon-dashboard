@@ -1,5 +1,5 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import { Box, VStack, Grid, GridItem, Spinner, Center, Text, Alert, AlertIcon } from '@chakra-ui/react';
+import { BrowserRouter, Routes, Route, Link as RouterLink } from 'react-router-dom';
+import { Box, VStack, Grid, GridItem, Spinner, Center, Text, Alert, AlertIcon, HStack, Link } from '@chakra-ui/react';
 import { useNetworkData } from './hooks/useNetworkData';
 import Header from './components/Header';
 import StatsCards from './components/StatsCards';
@@ -63,6 +63,26 @@ function AppContent() {
           <Route path="/address/:address" element={<AddressDetail networkData={data} />} />
         </Routes>
       )}
+
+      {/* Footer */}
+      <Box as="footer" borderTop="1px" borderColor="#30363d" mt={8} py={6} px={8}>
+        <HStack justify="center" spacing={2} flexWrap="wrap">
+          <Text fontSize="xs" color="gray.500">Built by</Text>
+          <Link
+            as={RouterLink}
+            to="/address/UQBKZ9V7mBDva2kQHYXfzcC4LJwtgie1O60xxqke_-vfOM0K"
+            color="brand.400"
+            fontSize="xs"
+            fontWeight="medium"
+            _hover={{ color: 'brand.300' }}
+          >
+            Agentmeme
+          </Link>
+          <Text fontSize="xs" color="gray.600" fontFamily="mono">
+            UQBKZ9V7...vfOM0K
+          </Text>
+        </HStack>
+      </Box>
     </Box>
   );
 }
