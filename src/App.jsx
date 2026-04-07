@@ -6,6 +6,7 @@ import StatsCards from './components/StatsCards';
 import TransactionChart from './components/TransactionChart';
 import SpendBreakdown from './components/SpendBreakdown';
 import TransactionFeed from './components/TransactionFeed';
+import TokenRevenueChart from './components/TokenRevenueChart';
 import ProxyCards from './components/ProxyCards';
 import AddressDetail from './pages/AddressDetail';
 
@@ -30,6 +31,8 @@ function Dashboard({ data, stats, error }) {
             <SpendBreakdown data={stats?.spendBreakdown} />
           </GridItem>
         </Grid>
+
+        <TokenRevenueChart volumeData={stats?.volumeData} />
 
         <ProxyCards rootConfig={data?.root?.config} proxies={data?.proxies} clients={data?.clients} workers={data?.workers} cocoonWallets={data?.cocoonWallets} />
 

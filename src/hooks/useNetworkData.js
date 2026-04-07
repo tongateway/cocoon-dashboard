@@ -40,10 +40,29 @@ function computeStats(data) {
     totalTonFlow += inVal;
     totalFees += fee;
     const day = new Date(tx.utime * 1000).toISOString().slice(0, 10);
-    if (!dailyVolume[day]) dailyVolume[day] = { date: day, volume: 0, txCount: 0, fees: 0 };
+    if (!dailyVolume[day]) dailyVolume[day] = { date: day, volume: 0, txCount: 0, fees: 0, revenue: 0, tokensEstimated: 0 };
     dailyVolume[day].volume += inVal / 1e9;
     dailyVolume[day].txCount += 1;
     dailyVolume[day].fees += fee / 1e9;
+
+    // Track revenue (payments to workers/proxies) and estimate tokens
+    if (tx.contractRole === 'proxy' || tx.contractRole === 'cocoon_wallet') {
+      for (const m of tx.out_msgs || []) {
+        const outVal = parseInt(m.value || '0');
+        if (outVal > 0) {
+          dailyVolume[day].revenue += outVal / 1e9;
+          // Estimate tokens: ~60 nanoTON per token average (3x multiplier mix)
+          dailyVolume[day].tokensEstimated += outVal / 60;
+        }
+      }
+    }
+    // Client top-ups = input spending
+    if (tx.contractRole === 'cocoon_wallet' || tx.contractRole === 'client') {
+      if (inVal > 0) {
+        dailyVolume[day].revenue += inVal / 1e9;
+        dailyVolume[day].tokensEstimated += inVal / 60;
+      }
+    }
   }
 
   let workerPayments = 0, proxyFees = 0;
