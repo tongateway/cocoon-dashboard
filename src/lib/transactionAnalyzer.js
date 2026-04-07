@@ -1,5 +1,44 @@
 import { getTransactions, getAddressInfo } from '../api/toncenter';
 
+// Known Cocoon contract code hashes (SHA256 of decoded base64 code, first 16 hex chars)
+// These identify contract types on-chain
+const COCOON_PROXY_HASH = '7e94eaaeaaa423b9'; // cocoon_wallet / proxy payment contract
+
+function computeCodeHash(codeBase64) {
+  if (!codeBase64) return null;
+  // Simple hash: use code length + first 40 chars as fingerprint
+  // (Real SHA256 would need crypto API, this is sufficient for classification)
+  return `${codeBase64.length}:${codeBase64.slice(0, 40)}`;
+}
+
+function isWalletCode(codeBase64) {
+  if (!codeBase64) return false;
+  // Standard TON wallets have very short code (< 250 chars base64)
+  if (codeBase64.length <= 250) return true;
+  // WalletV4/V5 patterns - these start with specific prefixes and are ~1400-1800 chars
+  // but cocoon contracts also start with te6cck, so check length ranges
+  // WalletV4R2 is exactly len=1460, WalletV5 is around 1700-1800
+  // Cocoon proxy is 876, cocoon worker is 760-988
+  return false;
+}
+
+function isCocoonProxy(codeBase64) {
+  if (!codeBase64) return false;
+  // Cocoon proxy/wallet contracts are exactly 876 chars
+  // and start with this specific prefix
+  return codeBase64.length === 876 &&
+    codeBase64.startsWith('te6cckECFAEAAoEAART/APSkE/S88sgLAQIBIAID');
+}
+
+function isCocoonContract(codeBase64) {
+  if (!codeBase64) return false;
+  // Known Cocoon contract code lengths: 760, 876, 988
+  // All start with te6cckEC and contain APSkE/S88sgL
+  if (!codeBase64.includes('APSkE/S88sgL')) return false;
+  const len = codeBase64.length;
+  return len === 760 || len === 876 || len === 988;
+}
+
 export async function discoverContracts(rootAddress) {
   const discovered = {
     root: { address: rootAddress, balance: '0', state: 'unknown', lastActivity: 0 },
@@ -22,7 +61,7 @@ export async function discoverContracts(rootAddress) {
     ...rootTxs.map(tx => ({ ...tx, contractRole: 'root' }))
   );
 
-  // Phase 2: Extract unique interacting addresses from root transactions
+  // Phase 2: Extract unique interacting addresses
   const interactingAddresses = new Set();
   for (const tx of rootTxs) {
     if (tx.in_msg?.source) interactingAddresses.add(tx.in_msg.source);
@@ -33,22 +72,7 @@ export async function discoverContracts(rootAddress) {
   interactingAddresses.delete('');
   interactingAddresses.delete(rootAddress);
 
-  // Phase 3: Check each interacting address — filter out simple wallets
-  // Known wallet code hashes (WalletV3, V4, V5, etc.) should be excluded
-  const WALLET_CODE_PREFIXES = [
-    'te6cckEBAQEAcQAA3v8AIN0gggFMl7ohggEznLqxn', // WalletV3R2
-    'te6cckECFQEAAtQAART/APSkE/S88sgLAQIBIAID', // WalletV4R2
-    'te6cckECFQEAAtQAART/APSkE/S88sgLAQIBYgID', // WalletV4
-    'te6cckEBAQEAIwAIQgLkzzsvTYz', // SimpleWallet
-  ];
-
-  function isLikelyWallet(codeBase64) {
-    if (!codeBase64) return false;
-    // Wallet contracts are typically short (< 1KB base64)
-    if (codeBase64.length < 600) return true;
-    return WALLET_CODE_PREFIXES.some(prefix => codeBase64.startsWith(prefix));
-  }
-
+  // Phase 3: Check each address — only keep Cocoon proxy contracts
   const addressChecks = await Promise.allSettled(
     [...interactingAddresses].map(async addr => {
       const info = await getAddressInfo(addr);
@@ -61,20 +85,8 @@ export async function discoverContracts(rootAddress) {
     const info = result.value;
     if (info.state !== 'active' || !info.code) continue;
 
-    // Skip simple wallet contracts — they're not Cocoon proxies
-    if (isLikelyWallet(info.code)) continue;
-
-    // Also skip if the only interaction was a tiny value (spam/dust)
-    const txsWithAddr = rootTxs.filter(tx =>
-      tx.in_msg?.source === info.address ||
-      (tx.out_msgs || []).some(m => m.destination === info.address)
-    );
-    const totalValue = txsWithAddr.reduce((sum, tx) => {
-      if (tx.in_msg?.source === info.address) return sum + parseInt(tx.in_msg.value || '0');
-      return sum;
-    }, 0);
-    // Skip if total interaction value < 0.01 TON (likely spam)
-    if (totalValue < 10_000_000) continue;
+    // Only accept Cocoon proxy contracts (code hash match)
+    if (!isCocoonProxy(info.code)) continue;
 
     discovered.proxies.set(info.address, {
       address: info.address,
@@ -86,7 +98,7 @@ export async function discoverContracts(rootAddress) {
     });
   }
 
-  // Phase 4: For each proxy, fetch transactions to discover clients/workers
+  // Phase 4: For each proxy, discover clients and workers
   const proxyTxPromises = [...discovered.proxies.keys()].map(async proxyAddr => {
     try {
       const txs = await getTransactions(proxyAddr, 30);
@@ -97,22 +109,33 @@ export async function discoverContracts(rootAddress) {
         ...txs.map(tx => ({ ...tx, contractRole: 'proxy' }))
       );
 
+      // Collect child addresses (exclude root and self)
       const childAddrs = new Set();
       for (const tx of txs) {
-        if (tx.in_msg?.source && tx.in_msg.source !== rootAddress) {
+        if (tx.in_msg?.source && tx.in_msg.source !== rootAddress && tx.in_msg.source !== proxyAddr) {
           childAddrs.add(tx.in_msg.source);
         }
         for (const outMsg of tx.out_msgs || []) {
-          if (outMsg.destination && outMsg.destination !== rootAddress) {
+          if (outMsg.destination && outMsg.destination !== rootAddress && outMsg.destination !== proxyAddr) {
             childAddrs.add(outMsg.destination);
           }
         }
       }
 
+      // Remove other known proxies
+      for (const pAddr of discovered.proxies.keys()) {
+        childAddrs.delete(pAddr);
+      }
+
       const childChecks = await Promise.allSettled(
-        [...childAddrs].slice(0, 20).map(async addr => {
+        [...childAddrs].slice(0, 30).map(async addr => {
           const info = await getAddressInfo(addr);
-          return { address: addr, balance: info.balance, state: info.state, hasCode: !!info.code };
+          return {
+            address: addr,
+            balance: info.balance,
+            state: info.state,
+            code: info.code || '',
+          };
         })
       );
 
@@ -121,28 +144,48 @@ export async function discoverContracts(rootAddress) {
         const child = result.value;
         if (child.state !== 'active') continue;
 
-        if (child.hasCode) {
-          const sendsToProxy = txs.some(tx => tx.in_msg?.source === child.address);
-          const receivesFromProxy = txs.some(tx =>
-            (tx.out_msgs || []).some(m => m.destination === child.address)
-          );
+        // Skip wallets and non-cocoon contracts
+        if (isWalletCode(child.code)) continue;
+        if (!child.code) continue;
 
-          if (receivesFromProxy && !sendsToProxy) {
-            discovered.workers.set(child.address, {
-              address: child.address,
-              balance: child.balance,
-              proxyAddress: proxyAddr,
-            });
+        // Skip if it's another cocoon proxy (not a client/worker)
+        if (isCocoonProxy(child.code)) continue;
+
+        // Classify based on transaction direction with this proxy:
+        // - Contracts that SEND money to the proxy = clients (paying for inference)
+        // - Contracts that RECEIVE money from the proxy = workers (getting paid)
+        const sendsToProxy = txs.some(tx => {
+          const val = parseInt(tx.in_msg?.value || '0');
+          return tx.in_msg?.source === child.address && val > 0;
+        });
+        const receivesFromProxy = txs.some(tx =>
+          (tx.out_msgs || []).some(m => m.destination === child.address && parseInt(m.value || '0') > 0)
+        );
+
+        const entry = {
+          address: child.address,
+          balance: child.balance,
+          proxyAddress: proxyAddr,
+        };
+
+        if (receivesFromProxy && !sendsToProxy) {
+          discovered.workers.set(child.address, entry);
+          proxy.workers.set(child.address, child);
+        } else if (sendsToProxy && !receivesFromProxy) {
+          discovered.clients.set(child.address, entry);
+          proxy.clients.set(child.address, child);
+        } else if (isCocoonContract(child.code)) {
+          // If direction is ambiguous but it's a cocoon contract,
+          // use code length as heuristic: shorter code (760) = worker, longer (988) = client
+          if (child.code.length <= 800) {
+            discovered.workers.set(child.address, entry);
             proxy.workers.set(child.address, child);
           } else {
-            discovered.clients.set(child.address, {
-              address: child.address,
-              balance: child.balance,
-              proxyAddress: proxyAddr,
-            });
+            discovered.clients.set(child.address, entry);
             proxy.clients.set(child.address, child);
           }
         }
+        // else: skip non-cocoon contracts with ambiguous direction
       }
     } catch (err) {
       console.warn(`Failed to analyze proxy ${proxyAddr}:`, err.message);
