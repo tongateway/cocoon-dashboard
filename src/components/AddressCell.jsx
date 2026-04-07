@@ -1,18 +1,17 @@
 import { HStack, Text, IconButton, useClipboard, Tooltip, Link } from '@chakra-ui/react';
+import { Link as RouterLink } from 'react-router-dom';
 import { truncateAddress } from '../lib/formatters';
 
 export default function AddressCell({ address }) {
   const { hasCopied, onCopy } = useClipboard(address || '');
   if (!address) return <Text color="gray.500">—</Text>;
 
-  const tonviewerUrl = `https://tonviewer.com/${address}`;
-
   return (
     <HStack spacing={1}>
       <Tooltip label={address} placement="top" hasArrow>
         <Link
-          href={tonviewerUrl}
-          isExternal
+          as={RouterLink}
+          to={`/address/${encodeURIComponent(address)}`}
           color="brand.300"
           fontFamily="mono"
           fontSize="sm"

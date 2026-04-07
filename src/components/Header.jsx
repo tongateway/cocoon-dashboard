@@ -1,4 +1,6 @@
 import { Box, Flex, Heading, HStack, Text, IconButton, Tooltip } from '@chakra-ui/react';
+import { Link as RouterLink } from 'react-router-dom';
+import SearchInput from './SearchInput';
 
 export default function Header({ isLive, lastRefresh, onRefresh, loading }) {
   return (
@@ -6,7 +8,7 @@ export default function Header({ isLive, lastRefresh, onRefresh, loading }) {
       as="header"
       align="center"
       justify="space-between"
-      px={8}
+      px={{ base: 4, md: 8 }}
       py={4}
       borderBottom="1px"
       borderColor="#30363d"
@@ -14,8 +16,10 @@ export default function Header({ isLive, lastRefresh, onRefresh, loading }) {
       position="sticky"
       top={0}
       zIndex={10}
+      gap={4}
+      flexWrap="wrap"
     >
-      <HStack spacing={4}>
+      <HStack spacing={4} as={RouterLink} to="/" _hover={{ opacity: 0.8 }} cursor="pointer">
         <CocoonLogo />
         <Box>
           <Heading size="md" color="white" letterSpacing="-0.02em">
@@ -27,7 +31,9 @@ export default function Header({ isLive, lastRefresh, onRefresh, loading }) {
         </Box>
       </HStack>
 
-      <HStack spacing={4}>
+      <HStack spacing={4} flexWrap="wrap">
+        <SearchInput />
+
         <HStack spacing={2}>
           <Box
             w={2}
@@ -42,7 +48,7 @@ export default function Header({ isLive, lastRefresh, onRefresh, loading }) {
         </HStack>
 
         {lastRefresh && (
-          <Text fontSize="xs" color="gray.500">
+          <Text fontSize="xs" color="gray.500" display={{ base: 'none', md: 'block' }}>
             Updated {lastRefresh.toLocaleTimeString()}
           </Text>
         )}

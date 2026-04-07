@@ -33,7 +33,22 @@ export async function discoverContracts(rootAddress) {
   interactingAddresses.delete('');
   interactingAddresses.delete(rootAddress);
 
-  // Phase 3: Check each interacting address — contracts with code are likely proxies
+  // Phase 3: Check each interacting address — filter out simple wallets
+  // Known wallet code hashes (WalletV3, V4, V5, etc.) should be excluded
+  const WALLET_CODE_PREFIXES = [
+    'te6cckEBAQEAcQAA3v8AIN0gggFMl7ohggEznLqxn', // WalletV3R2
+    'te6cckECFQEAAtQAART/APSkE/S88sgLAQIBIAID', // WalletV4R2
+    'te6cckECFQEAAtQAART/APSkE/S88sgLAQIBYgID', // WalletV4
+    'te6cckEBAQEAIwAIQgLkzzsvTYz', // SimpleWallet
+  ];
+
+  function isLikelyWallet(codeBase64) {
+    if (!codeBase64) return false;
+    // Wallet contracts are typically short (< 1KB base64)
+    if (codeBase64.length < 600) return true;
+    return WALLET_CODE_PREFIXES.some(prefix => codeBase64.startsWith(prefix));
+  }
+
   const addressChecks = await Promise.allSettled(
     [...interactingAddresses].map(async addr => {
       const info = await getAddressInfo(addr);
@@ -45,6 +60,21 @@ export async function discoverContracts(rootAddress) {
     if (result.status !== 'fulfilled') continue;
     const info = result.value;
     if (info.state !== 'active' || !info.code) continue;
+
+    // Skip simple wallet contracts — they're not Cocoon proxies
+    if (isLikelyWallet(info.code)) continue;
+
+    // Also skip if the only interaction was a tiny value (spam/dust)
+    const txsWithAddr = rootTxs.filter(tx =>
+      tx.in_msg?.source === info.address ||
+      (tx.out_msgs || []).some(m => m.destination === info.address)
+    );
+    const totalValue = txsWithAddr.reduce((sum, tx) => {
+      if (tx.in_msg?.source === info.address) return sum + parseInt(tx.in_msg.value || '0');
+      return sum;
+    }, 0);
+    // Skip if total interaction value < 0.01 TON (likely spam)
+    if (totalValue < 10_000_000) continue;
 
     discovered.proxies.set(info.address, {
       address: info.address,
