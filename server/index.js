@@ -2,6 +2,7 @@ import 'dotenv/config';
 import { createServer } from 'http';
 import axios from 'axios';
 import crypto from 'crypto';
+import { Cell } from '@ton/core';
 
 const { TONCENTER_API_KEY, ROOT_CONTRACT, PORT = 3001 } = process.env;
 
@@ -52,6 +53,89 @@ function extractOp(b64) {
   return null;
 }
 
+// --- Root contract BOC parser ---
+function parseRootContract(dataBase64) {
+  try {
+    const cell = Cell.fromBase64(dataBase64);
+    const cs = cell.beginParse();
+
+    const owner = cs.loadAddress()?.toString() || null;
+    cs.loadUint(32); // version/extra
+
+    const dataRef = cs.loadRef();
+    const paramsRef = cs.loadRef();
+
+    // Parse params
+    const pcs = paramsRef.beginParse();
+    const loadCoins = (s) => { const len = s.loadUint(4); return len === 0 ? 0n : s.loadUintBig(len * 8); };
+
+    const structVersion = pcs.loadUint(8);
+    const paramsVersion = pcs.loadUint(32);
+    const uniqueId = pcs.loadUint(32);
+    const isTest = pcs.loadBit();
+    const pricePerToken = Number(loadCoins(pcs));
+    const workerFeePerToken = Number(loadCoins(pcs));
+
+    let promptMul = 10000, cachedMul = 10000, completionMul = 10000, reasoningMul = 10000;
+    if (structVersion >= 3) promptMul = pcs.loadUint(32);
+    if (structVersion >= 2) cachedMul = pcs.loadUint(32);
+    if (structVersion >= 3) completionMul = pcs.loadUint(32);
+    if (structVersion >= 2) reasoningMul = pcs.loadUint(32);
+
+    const proxyDelayBeforeClose = pcs.loadUint(32);
+    const clientDelayBeforeClose = pcs.loadUint(32);
+
+    let minProxyStake = 1000000000, minClientStake = 1000000000;
+    if (structVersion >= 1) minProxyStake = Number(loadCoins(pcs));
+    if (structVersion >= 1) minClientStake = Number(loadCoins(pcs));
+
+    // Parse data cell for proxy IPs
+    const dcs = dataRef.beginParse();
+    dcs.loadBit(); // hasProxyHashes
+    if (dcs.remainingRefs > 0) dcs.loadRef(); // proxy hashes dict
+
+    const proxyIPs = [];
+    const hasProxy = dcs.remainingBits > 0 ? dcs.loadBit() : false;
+    if (hasProxy && dcs.remainingRefs > 0) {
+      const pxRef = dcs.loadRef();
+      const pxcs = pxRef.beginParse();
+      pxcs.loadUint(8); // type
+      const remaining = pxcs.remainingBits;
+      if (remaining > 0) {
+        const buf = pxcs.loadBuffer(Math.floor(remaining / 8));
+        const str = buf.toString('utf8').replace(/[^\x20-\x7E]/g, '').trim();
+        proxyIPs.push(...str.split(' ').filter(s => s.includes(':')));
+      }
+    }
+
+    let lastProxySeqno = 0;
+    if (dcs.remainingBits >= 32) lastProxySeqno = dcs.loadUint(32);
+
+    return {
+      owner,
+      structVersion,
+      paramsVersion,
+      uniqueId,
+      isTest,
+      pricePerToken,
+      workerFeePerToken,
+      promptMultiplier: promptMul,
+      cachedMultiplier: cachedMul,
+      completionMultiplier: completionMul,
+      reasoningMultiplier: reasoningMul,
+      proxyDelayBeforeClose,
+      clientDelayBeforeClose,
+      minProxyStake,
+      minClientStake,
+      proxyIPs,
+      lastProxySeqno,
+    };
+  } catch (e) {
+    console.warn('[parseRoot] error:', e.message);
+    return null;
+  }
+}
+
 // --- Cache ---
 let cache = null;
 let cacheTime = 0;
@@ -89,7 +173,11 @@ async function discover() {
     getInfoAndClassify(ROOT_CONTRACT),
     getAllTxs(ROOT_CONTRACT, 3),
   ]);
-  result.root = { ...rootInfo, lastActivity: rootTxs[0]?.utime || 0 };
+  // Parse root contract BOC data
+  const fullRootInfo = unwrap(await tc.get('/getAddressInformation', { params: { address: ROOT_CONTRACT } }));
+  const rootConfig = fullRootInfo.data ? parseRootContract(fullRootInfo.data) : null;
+
+  result.root = { ...rootInfo, lastActivity: rootTxs[0]?.utime || 0, config: rootConfig };
   result.transactions.push(...rootTxs.map(tx => ({ ...tx, contractRole: 'root' })));
 
   // 2. Find wallets sending cocoon opcodes in root txs

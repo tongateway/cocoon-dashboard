@@ -1,11 +1,12 @@
 import {
   Card, CardBody, CardHeader, Heading,
   SimpleGrid, Box, HStack, VStack, Text, Badge, Tabs, TabList, TabPanels, TabPanel, Tab,
+  Divider, Code, Tooltip,
 } from '@chakra-ui/react';
 import AddressCell from './AddressCell';
 import { nanoToTon, timeAgo } from '../lib/formatters';
 
-export default function ProxyCards({ proxies, clients, workers, cocoonWallets }) {
+export default function ProxyCards({ rootConfig, proxies, clients, workers, cocoonWallets }) {
   const proxyList = proxies ? [...proxies.values()] : [];
   const clientList = clients ? [...clients.values()] : [];
   const workerList = workers ? [...workers.values()] : [];
@@ -18,7 +19,12 @@ export default function ProxyCards({ proxies, clients, workers, cocoonWallets })
       </CardHeader>
       <CardBody>
         <Tabs variant="soft-rounded" colorScheme="teal" size="sm">
-          <TabList mb={4} gap={2}>
+          <TabList mb={4} gap={2} flexWrap="wrap">
+            {rootConfig && (
+              <Tab color="gray.400" _selected={{ color: 'white', bg: 'yellow.700' }}>
+                Root Contract
+              </Tab>
+            )}
             <Tab color="gray.400" _selected={{ color: 'white', bg: 'brand.600' }}>
               Proxies ({proxyList.length})
             </Tab>
@@ -36,6 +42,106 @@ export default function ProxyCards({ proxies, clients, workers, cocoonWallets })
           </TabList>
 
           <TabPanels>
+            {/* Root Contract Tab */}
+            {rootConfig && (
+              <TabPanel p={0}>
+                <SimpleGrid columns={{ base: 1, lg: 2 }} spacing={4}>
+                  {/* Pricing */}
+                  <Box p={4} borderRadius="lg" border="1px" borderColor="#30363d" bg="#0d1117">
+                    <Text color="yellow.400" fontWeight="bold" fontSize="sm" mb={3}>Pricing</Text>
+                    <VStack spacing={2} align="stretch">
+                      <ConfigRow label="Price per token" value={`${rootConfig.pricePerToken} nanoTON`} />
+                      <ConfigRow label="Worker fee per token" value={`${rootConfig.workerFeePerToken} nanoTON`} />
+                      <ConfigRow label="Proxy margin" value={`${rootConfig.pricePerToken - rootConfig.workerFeePerToken} nanoTON/token`} />
+                      <Divider borderColor="#30363d" />
+                      <ConfigRow label="Prompt multiplier" value={`${(rootConfig.promptMultiplier / 10000).toFixed(1)}x`} />
+                      <ConfigRow label="Cached multiplier" value={`${(rootConfig.cachedMultiplier / 10000).toFixed(1)}x`} />
+                      <ConfigRow label="Completion multiplier" value={`${(rootConfig.completionMultiplier / 10000).toFixed(1)}x`} />
+                      <ConfigRow label="Reasoning multiplier" value={`${(rootConfig.reasoningMultiplier / 10000).toFixed(1)}x`} />
+                    </VStack>
+                  </Box>
+
+                  {/* Network Config */}
+                  <Box p={4} borderRadius="lg" border="1px" borderColor="#30363d" bg="#0d1117">
+                    <Text color="yellow.400" fontWeight="bold" fontSize="sm" mb={3}>Network Config</Text>
+                    <VStack spacing={2} align="stretch">
+                      <HStack justify="space-between">
+                        <Text fontSize="xs" color="gray.400">Owner</Text>
+                        <AddressCell address={rootConfig.owner} />
+                      </HStack>
+                      <ConfigRow label="Struct version" value={rootConfig.structVersion} />
+                      <ConfigRow label="Params version" value={rootConfig.paramsVersion} />
+                      <ConfigRow label="Test mode" value={rootConfig.isTest ? 'Yes' : 'No'} />
+                      <ConfigRow label="Last proxy seqno" value={rootConfig.lastProxySeqno} />
+                      <Divider borderColor="#30363d" />
+                      <ConfigRow label="Min proxy stake" value={`${(rootConfig.minProxyStake / 1e9).toFixed(0)} TON`} />
+                      <ConfigRow label="Min client stake" value={`${(rootConfig.minClientStake / 1e9).toFixed(0)} TON`} />
+                      <ConfigRow label="Proxy close delay" value={`${rootConfig.proxyDelayBeforeClose / 3600}h`} />
+                      <ConfigRow label="Client close delay" value={`${rootConfig.clientDelayBeforeClose / 3600}h`} />
+                    </VStack>
+                  </Box>
+
+                  {/* Proxy IPs */}
+                  {rootConfig.proxyIPs?.length > 0 && (
+                    <Box p={4} borderRadius="lg" border="1px" borderColor="#30363d" bg="#0d1117">
+                      <Text color="yellow.400" fontWeight="bold" fontSize="sm" mb={3}>Registered Proxy Endpoints</Text>
+                      <VStack spacing={2} align="stretch">
+                        {rootConfig.proxyIPs.map((ip, i) => (
+                          <HStack key={i} spacing={2}>
+                            <Badge colorScheme="green" variant="subtle" fontSize="xs">
+                              {ip.startsWith('!') ? 'workers' : 'clients'}
+                            </Badge>
+                            <Code fontSize="sm" bg="transparent" color="brand.300">
+                              {ip.replace(/^!/, '')}
+                            </Code>
+                          </HStack>
+                        ))}
+                      </VStack>
+                    </Box>
+                  )}
+
+                  {/* Token Economics */}
+                  <Box p={4} borderRadius="lg" border="1px" borderColor="#30363d" bg="#0d1117">
+                    <Text color="yellow.400" fontWeight="bold" fontSize="sm" mb={3}>Token Economics</Text>
+                    <VStack spacing={2} align="stretch">
+                      <Tooltip label="Cost for 1M prompt tokens" hasArrow>
+                        <HStack justify="space-between" cursor="help">
+                          <Text fontSize="xs" color="gray.400">1M prompt tokens</Text>
+                          <Text fontSize="sm" color="white" fontWeight="bold">
+                            {((rootConfig.pricePerToken * rootConfig.promptMultiplier / 10000) * 1e6 / 1e9).toFixed(4)} TON
+                          </Text>
+                        </HStack>
+                      </Tooltip>
+                      <Tooltip label="Cost for 1M completion tokens" hasArrow>
+                        <HStack justify="space-between" cursor="help">
+                          <Text fontSize="xs" color="gray.400">1M completion tokens</Text>
+                          <Text fontSize="sm" color="white" fontWeight="bold">
+                            {((rootConfig.pricePerToken * rootConfig.completionMultiplier / 10000) * 1e6 / 1e9).toFixed(4)} TON
+                          </Text>
+                        </HStack>
+                      </Tooltip>
+                      <Tooltip label="Cost for 1M reasoning tokens" hasArrow>
+                        <HStack justify="space-between" cursor="help">
+                          <Text fontSize="xs" color="gray.400">1M reasoning tokens</Text>
+                          <Text fontSize="sm" color="white" fontWeight="bold">
+                            {((rootConfig.pricePerToken * rootConfig.reasoningMultiplier / 10000) * 1e6 / 1e9).toFixed(4)} TON
+                          </Text>
+                        </HStack>
+                      </Tooltip>
+                      <Tooltip label="Cost for 1M cached tokens" hasArrow>
+                        <HStack justify="space-between" cursor="help">
+                          <Text fontSize="xs" color="gray.400">1M cached tokens</Text>
+                          <Text fontSize="sm" color="white" fontWeight="bold">
+                            {((rootConfig.pricePerToken * rootConfig.cachedMultiplier / 10000) * 1e6 / 1e9).toFixed(4)} TON
+                          </Text>
+                        </HStack>
+                      </Tooltip>
+                    </VStack>
+                  </Box>
+                </SimpleGrid>
+              </TabPanel>
+            )}
+
             {/* Proxies Tab */}
             <TabPanel p={0}>
               {proxyList.length === 0 ? (
@@ -187,5 +293,14 @@ function ContractCard({ address, balance, state, lastActivity, badge, badgeColor
         ))}
       </HStack>
     </Box>
+  );
+}
+
+function ConfigRow({ label, value }) {
+  return (
+    <HStack justify="space-between">
+      <Text fontSize="xs" color="gray.400">{label}</Text>
+      <Text fontSize="sm" color="white" fontWeight="medium">{value}</Text>
+    </HStack>
   );
 }

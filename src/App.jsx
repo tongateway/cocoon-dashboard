@@ -31,7 +31,7 @@ function Dashboard({ data, stats, error }) {
           </GridItem>
         </Grid>
 
-        <ProxyCards proxies={data?.proxies} clients={data?.clients} workers={data?.workers} cocoonWallets={data?.cocoonWallets} />
+        <ProxyCards rootConfig={data?.root?.config} proxies={data?.proxies} clients={data?.clients} workers={data?.workers} cocoonWallets={data?.cocoonWallets} />
 
         <TransactionFeed transactions={data?.allTransactions} />
       </VStack>
