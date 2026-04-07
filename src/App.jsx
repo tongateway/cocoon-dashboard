@@ -1,10 +1,59 @@
-import { Box, Heading, Text } from '@chakra-ui/react';
+import { Box, VStack, Grid, GridItem, Spinner, Center, Text, Alert, AlertIcon } from '@chakra-ui/react';
+import { useNetworkData } from './hooks/useNetworkData';
+import Header from './components/Header';
+import StatsCards from './components/StatsCards';
+import TransactionChart from './components/TransactionChart';
+import SpendBreakdown from './components/SpendBreakdown';
+import TransactionFeed from './components/TransactionFeed';
+import ProxyCards from './components/ProxyCards';
 
 export default function App() {
+  const { data, stats, loading, error, lastRefresh, isLive, refresh } = useNetworkData();
+
+  if (loading && !data) {
+    return (
+      <Box minH="100vh" bg="#0d1117">
+        <Header isLive={false} lastRefresh={null} onRefresh={refresh} loading={true} />
+        <Center h="80vh">
+          <VStack spacing={4}>
+            <Spinner size="xl" color="brand.400" thickness="3px" />
+            <Text color="gray.400">Discovering Cocoon Network contracts...</Text>
+            <Text color="gray.600" fontSize="sm">This may take a few seconds</Text>
+          </VStack>
+        </Center>
+      </Box>
+    );
+  }
+
   return (
-    <Box minH="100vh" p={8}>
-      <Heading color="brand.400">Cocoon Network Dashboard</Heading>
-      <Text color="gray.400" mt={2}>Loading...</Text>
+    <Box minH="100vh" bg="#0d1117">
+      <Header isLive={isLive} lastRefresh={lastRefresh} onRefresh={refresh} loading={loading} />
+
+      <Box px={{ base: 4, lg: 8 }} py={6} maxW="1400px" mx="auto">
+        <VStack spacing={6} align="stretch">
+          {error && (
+            <Alert status="warning" variant="subtle" borderRadius="lg" bg="orange.900" color="orange.200">
+              <AlertIcon />
+              Data may be stale: {error}
+            </Alert>
+          )}
+
+          <StatsCards stats={stats} />
+
+          <Grid templateColumns={{ base: '1fr', lg: '3fr 2fr' }} gap={6}>
+            <GridItem>
+              <TransactionChart volumeData={stats?.volumeData} />
+            </GridItem>
+            <GridItem>
+              <SpendBreakdown data={stats?.spendBreakdown} />
+            </GridItem>
+          </Grid>
+
+          <ProxyCards proxies={data?.proxies} />
+
+          <TransactionFeed transactions={data?.allTransactions} />
+        </VStack>
+      </Box>
     </Box>
   );
 }
