@@ -3,6 +3,7 @@ import { createServer } from 'http';
 import axios from 'axios';
 import crypto from 'crypto';
 import { Cell } from '@ton/core';
+import { CocoonCrawler } from './crawler.js';
 
 const { TONCENTER_API_KEY, ROOT_CONTRACT, PORT = 3001 } = process.env;
 
@@ -337,6 +338,15 @@ function error(res, code, msg) {
   res.end(JSON.stringify({ error: msg }));
 }
 
+// --- Crawler ---
+const crawler = new CocoonCrawler(tc);
+// Register the known root contract
+crawler.checkAddress(ROOT_CONTRACT);
+// Scan the owner for any other root deployments
+crawler.scanDeployer('EQDnlslXI2RtI1WhLmtelkb4CVQGxr8E_xSIjl0Hg79jNhNQ').catch(() => {});
+// Start background block scanning (every 30s)
+crawler.start(30_000);
+
 createServer(async (req, res) => {
   if (req.method === 'OPTIONS') {
     res.writeHead(204, { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET', 'Access-Control-Allow-Headers': '*' });
@@ -347,6 +357,20 @@ createServer(async (req, res) => {
   const path = url.pathname;
 
   try {
+    // List all discovered root contracts
+    if (path === '/api/roots') {
+      const roots = crawler.getKnownRoots();
+      return json(res, { roots, scanning: crawler.scanning, lastSeqno: crawler.lastSeqno });
+    }
+
+    // Check if a specific address is a cocoon contract
+    if (path === '/api/check-root') {
+      const addr = url.searchParams.get('address');
+      if (!addr) return error(res, 400, 'address required');
+      const isRoot = await crawler.checkAddress(addr);
+      return json(res, { address: addr, isRoot, knownRoots: crawler.getKnownRoots().length });
+    }
+
     if (path === '/api/discover') {
       if (cache && Date.now() - cacheTime < CACHE_TTL) return json(res, cache);
       cache = await discover();
