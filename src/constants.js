@@ -1,2 +1,2 @@
-export const ROOT_CONTRACT = 'EQCns7bYSp0igFvS1wpb5wsZjCKCV19MD5AVzI4EyxsnU73k';
+export const ROOT_CONTRACT = 'UQCns7bYSp0igFvS1wpb5wsZjCKCV19MD5AVzI4EyxsnU-Ah';
 export const DISCOVERY_INTERVAL_MS = 120_000;

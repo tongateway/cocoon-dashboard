@@ -2,8 +2,37 @@ import 'dotenv/config';
 import { createServer } from 'http';
 import axios from 'axios';
 import crypto from 'crypto';
-import { Cell } from '@ton/core';
+import { Cell, Address } from '@ton/core';
 import { CocoonCrawler } from './crawler.js';
+
+// Convert any TON address to non-bounceable (UQ) format
+function toUQ(addr) {
+  if (!addr) return addr;
+  try {
+    return Address.parse(addr).toString({ bounceable: false });
+  } catch {
+    return addr;
+  }
+}
+
+// Recursively convert all address strings in an object to UQ format
+function convertAddresses(obj) {
+  if (!obj) return obj;
+  if (typeof obj === 'string') {
+    // Check if it looks like a TON address (EQ/UQ prefix, ~48 chars)
+    if (/^(EQ|UQ|kQ|0:)[A-Za-z0-9_\-+/]{44,}/.test(obj)) return toUQ(obj);
+    return obj;
+  }
+  if (Array.isArray(obj)) return obj.map(convertAddresses);
+  if (typeof obj === 'object') {
+    const result = {};
+    for (const [k, v] of Object.entries(obj)) {
+      result[k] = convertAddresses(v);
+    }
+    return result;
+  }
+  return obj;
+}
 
 const { TONCENTER_API_KEY, ROOT_CONTRACT, PORT = 3001 } = process.env;
 
@@ -331,7 +360,7 @@ function findEntry(result, addr) {
 // --- Routes ---
 function json(res, data) {
   res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-  res.end(JSON.stringify(data));
+  res.end(JSON.stringify(convertAddresses(data)));
 }
 function error(res, code, msg) {
   res.writeHead(code, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
@@ -381,6 +410,7 @@ createServer(async (req, res) => {
     const addrMatch = path.match(/^\/api\/address\/(.+)$/);
     if (addrMatch) {
       const addr = decodeURIComponent(addrMatch[1]);
+      // toncenter accepts both EQ and UQ formats
       const info = unwrap(await tc.get('/getAddressInformation', { params: { address: addr } }));
       return json(res, info);
     }
