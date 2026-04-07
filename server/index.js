@@ -48,20 +48,37 @@ function scanOpcodes(txs, exclude) {
 let cache = null;
 let cacheTime = 0;
 
+async function getAllTxs(address, maxPages = 3) {
+  let all = [];
+  let lt = undefined, hash = undefined;
+  for (let i = 0; i < maxPages; i++) {
+    const params = { address, limit: 50 };
+    if (lt) { params.lt = lt; params.hash = hash; }
+    const txs = unwrap(await tc.get('/getTransactions', { params }));
+    all.push(...txs);
+    if (txs.length < 50) break;
+    const last = txs[txs.length - 1];
+    lt = last.transaction_id.lt;
+    hash = last.transaction_id.hash;
+  }
+  return all;
+}
+
 async function discover() {
   console.log('[discover] start');
   const result = { root: {}, proxies: [], clients: [], workers: [], cocoonWallets: [], transactions: [] };
 
+  // Fetch root info + ALL txs (paginated)
   const [rootInfo, rootTxs] = await Promise.all([
     unwrap(await tc.get('/getAddressInformation', { params: { address: ROOT_CONTRACT } })),
-    unwrap(await tc.get('/getTransactions', { params: { address: ROOT_CONTRACT, limit: 50 } })),
+    getAllTxs(ROOT_CONTRACT, 3),
   ]);
   result.root = { address: ROOT_CONTRACT, balance: rootInfo.balance, state: rootInfo.state, lastActivity: rootTxs[0]?.utime || 0 };
   result.transactions.push(...rootTxs.map(tx => ({ ...tx, contractRole: 'root' })));
 
   const exclude = new Set([ROOT_CONTRACT, '']);
   const cocoon = scanOpcodes(rootTxs, exclude);
-  console.log(`[discover] ${cocoon.size} cocoon addrs from root`);
+  console.log(`[discover] ${cocoon.size} cocoon addrs from ${rootTxs.length} root txs`);
 
   for (const [addr, ops] of cocoon) {
     exclude.add(addr);
@@ -90,6 +107,33 @@ async function discover() {
           const isWorker = ops.has('worker_proxy_request') || ops.has('ext_worker_payout_signed');
           if (isClient) { result.clients.push({ address: addr, type: 'client', balance: info.balance, state: info.state, opcodes: [...ops], proxyAddress: proxy.address }); proxy.clients.push(addr); }
           else if (isWorker) { result.workers.push({ address: addr, type: 'worker', balance: info.balance, state: info.state, opcodes: [...ops], proxyAddress: proxy.address }); proxy.workers.push(addr); }
+        } catch {}
+      }
+    } catch {}
+  }
+
+  // Crawl clients/workers to discover more contracts (3rd hop)
+  const allContracts = [...result.clients, ...result.workers, ...result.cocoonWallets];
+  for (const contract of allContracts) {
+    try {
+      const txs = unwrap(await tc.get('/getTransactions', { params: { address: contract.address, limit: 20 } }));
+      result.transactions.push(...txs.map(tx => ({ ...tx, contractRole: contract.type })));
+
+      const deep = scanOpcodes(txs, exclude);
+      for (const [addr, ops] of deep) {
+        exclude.add(addr);
+        try {
+          const info = unwrap(await tc.get('/getAddressInformation', { params: { address: addr } }));
+          const isClient = ops.has('client_proxy_request') || ops.has('client_proxy_register') || ops.has('ext_client_top_up');
+          const isWorker = ops.has('worker_proxy_request') || ops.has('ext_worker_payout_signed');
+          const isProxy = ops.has('owner_client_register') || ops.has('root_register_proxy') || ops.has('proxy_save_state');
+          if (isProxy && !result.proxies.find(p => p.address === addr)) {
+            result.proxies.push({ address: addr, type: 'proxy', balance: info.balance, state: info.state, opcodes: [...ops], clients: [], workers: [], lastActivity: 0 });
+          } else if (isClient && !result.clients.find(c => c.address === addr)) {
+            result.clients.push({ address: addr, type: 'client', balance: info.balance, state: info.state, opcodes: [...ops], proxyAddress: contract.proxyAddress || null });
+          } else if (isWorker && !result.workers.find(w => w.address === addr)) {
+            result.workers.push({ address: addr, type: 'worker', balance: info.balance, state: info.state, opcodes: [...ops], proxyAddress: contract.proxyAddress || null });
+          }
         } catch {}
       }
     } catch {}
