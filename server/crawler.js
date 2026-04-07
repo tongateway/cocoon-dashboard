@@ -5,11 +5,21 @@ import crypto from 'crypto';
 import { load, save } from './store.js';
 
 const CODE_TYPES = {
+  // Root
   'cfd7fb56c93c4e68': 'cocoon_root',
+  // Proxy versions
   '4693d2a95d0e55d4': 'cocoon_proxy',
+  '5598b6810bed2266': 'cocoon_proxy',
+  // Client versions
   '3204b6ab0ec40172': 'cocoon_client',
+  '81b712e7d26313be': 'cocoon_client',
+  '32f26bd974265be9': 'cocoon_client',
+  // Worker
   '8641e3b7669e0366': 'cocoon_worker',
+  // Wallet versions
   '2051342c307e220a': 'cocoon_wallet',
+  '9bd714dcc1ff9058': 'cocoon_wallet',
+  '51d730a6efdfe50c': 'cocoon_wallet',
 };
 
 function classifyCode(codeBase64) {

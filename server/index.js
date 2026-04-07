@@ -51,11 +51,21 @@ function unwrap(r) {
 // --- Contract type detection by code hash ---
 // These hashes are SHA256 of the base64-decoded contract code, first 16 hex chars
 const CODE_TYPES = {
+  // Root
   'cfd7fb56c93c4e68': 'cocoon_root',
+  // Proxy versions
   '4693d2a95d0e55d4': 'cocoon_proxy',
+  '5598b6810bed2266': 'cocoon_proxy',
+  // Client versions
   '3204b6ab0ec40172': 'cocoon_client',
+  '81b712e7d26313be': 'cocoon_client',
+  '32f26bd974265be9': 'cocoon_client',
+  // Worker
   '8641e3b7669e0366': 'cocoon_worker',
+  // Wallet versions
   '2051342c307e220a': 'cocoon_wallet',
+  '9bd714dcc1ff9058': 'cocoon_wallet',
+  '51d730a6efdfe50c': 'cocoon_wallet',
 };
 
 function getCodeHash(codeBase64) {
@@ -174,6 +184,8 @@ let cache = stored?.data || null;
 let cacheTime = stored?.timestamp || 0;
 if (cache) console.log(`[cache] Loaded discovery cache (age: ${Math.round((Date.now() - cacheTime) / 1000)}s)`);
 
+let discovering = false; // mutex
+
 function saveDiscoveryCache(data) {
   cache = data;
   cacheTime = Date.now();
@@ -219,60 +231,68 @@ async function discover() {
   result.root = { ...rootInfo, lastActivity: rootTxs[0]?.utime || 0, config: rootConfig };
   result.transactions.push(...rootTxs.map(tx => ({ ...tx, contractRole: 'root' })));
 
-  // 2. Find wallets sending cocoon opcodes in root txs
+  // 2. Find cocoon-opcode senders in root txs, then 2-hop from those only
   const visited = new Set([ROOT_CONTRACT, '']);
-  const cocoonQueue = []; // BFS queue for cocoon contracts
-  const relatedWallets = new Set(); // wallets that send cocoon opcodes
+  const cocoonQueue = [];
+  const opcodeAddrs = new Set(); // addresses that send cocoon opcodes to root
 
   for (const tx of rootTxs) {
     const src = tx.in_msg?.source;
     const inOp = extractOp(tx.in_msg?.msg_data?.body);
-    if (src && inOp && inOp !== 'excesses' && inOp !== 'payout') relatedWallets.add(src);
+    if (src && inOp && inOp !== 'excesses' && inOp !== 'payout') opcodeAddrs.add(src);
     for (const m of tx.out_msgs || []) {
       if (m.destination) {
         const outOp = extractOp(m.msg_data?.body);
-        if (outOp && outOp === 'excesses') relatedWallets.add(m.destination); // excesses → owner wallet
+        if (outOp && outOp === 'excesses') opcodeAddrs.add(m.destination);
       }
     }
   }
 
-  console.log(`[discover] ${relatedWallets.size} related wallets from ${rootTxs.length} root txs`);
+  console.log(`[discover] ${opcodeAddrs.size} opcode addrs, 2-hop scanning...`);
 
-  // 3. Crawl related wallets to find actual cocoon contracts by code hash
-  for (const walletAddr of relatedWallets) {
-    visited.add(walletAddr);
+  // Classify opcode addresses + crawl their txs to find cocoon contracts
+  for (const addr of opcodeAddrs) {
+    visited.add(addr);
     try {
-      const walletTxs = await getAllTxs(walletAddr, 1);
-      result.transactions.push(...walletTxs.map(tx => ({ ...tx, contractRole: 'related_wallet' })));
+      const classified = await getInfoAndClassify(addr);
+      addToResult(result, classified, null, cocoonQueue);
+    } catch {}
 
-      // Check all addresses in wallet's txs
-      for (const tx of walletTxs) {
-        const addrs = [tx.in_msg?.source];
-        for (const m of tx.out_msgs || []) addrs.push(m.destination);
-        for (const a of addrs) {
-          if (!a || visited.has(a)) continue;
-          visited.add(a);
-          try {
-            const classified = await getInfoAndClassify(a);
-            addToResult(result, classified, null, cocoonQueue);
-          } catch {}
-        }
+    // 2-hop: crawl this address's transactions
+    try {
+      const txs = await getAllTxs(addr, 3);
+      const peers = new Set();
+      for (const tx of txs) {
+        if (tx.in_msg?.source) peers.add(tx.in_msg.source);
+        for (const m of tx.out_msgs || []) { if (m.destination) peers.add(m.destination); }
+      }
+      peers.delete(''); peers.delete(addr);
+      for (const p of peers) {
+        if (visited.has(p)) continue;
+        visited.add(p);
+        try {
+          const classified = await getInfoAndClassify(p);
+          addToResult(result, classified, null, cocoonQueue);
+        } catch {}
       }
     } catch {}
   }
 
-  // 4. BFS crawl from all discovered cocoon contracts (deep: up to 5 pages per contract)
+  console.log(`[discover] after 2-hop: ${result.proxies.length}P ${result.clients.length}C ${result.workers.length}W ${cocoonQueue.length} queued`);
+
+  // 4. BFS crawl from discovered cocoon contracts (capped at 200 classifications)
   let idx = 0;
-  while (idx < cocoonQueue.length) {
+  let bfsClassified = 0;
+  const MAX_CLASSIFY = 200;
+  while (idx < cocoonQueue.length && bfsClassified < MAX_CLASSIFY) {
     const { address: addr, type } = cocoonQueue[idx++];
     try {
-      const txs = await getAllTxs(addr, 5);
+      const txs = await getAllTxs(addr, 2);
       const entry = findEntry(result, addr);
       if (entry) entry.lastActivity = txs[0]?.utime || 0;
 
       result.transactions.push(...txs.map(tx => ({ ...tx, contractRole: type })));
 
-      // Discover new addresses
       const newAddrs = new Set();
       for (const tx of txs) {
         if (tx.in_msg?.source && !visited.has(tx.in_msg.source)) newAddrs.add(tx.in_msg.source);
@@ -282,16 +302,42 @@ async function discover() {
       }
 
       for (const a of newAddrs) {
+        if (bfsClassified >= MAX_CLASSIFY) break;
         visited.add(a);
         try {
           const classified = await getInfoAndClassify(a);
           addToResult(result, classified, type === 'cocoon_proxy' ? addr : null, cocoonQueue);
+          bfsClassified++;
         } catch {}
       }
     } catch (e) {
       console.warn(`[discover] crawl fail ${addr.slice(0, 20)}:`, e.message);
     }
   }
+  console.log(`[discover] BFS classified ${bfsClassified} addresses`);
+
+  // 5. Load previously known cocoon addresses and check any we haven't visited
+  const knownAddrs = load('known_cocoon_addrs', []);
+  let newFromKnown = 0;
+  for (const addr of knownAddrs) {
+    if (visited.has(addr)) continue;
+    visited.add(addr);
+    try {
+      const classified = await getInfoAndClassify(addr);
+      addToResult(result, classified, null, cocoonQueue);
+      if (classified.type.startsWith('cocoon_')) newFromKnown++;
+    } catch {}
+  }
+  if (newFromKnown > 0) console.log(`[discover] ${newFromKnown} contracts loaded from known addrs`);
+
+  // Save all discovered cocoon addresses for next run
+  const allCocoonAddrs = [
+    ...result.proxies.map(p => p.address),
+    ...result.clients.map(c => c.address),
+    ...result.workers.map(w => w.address),
+    ...result.cocoonWallets.map(w => w.address),
+  ];
+  save('known_cocoon_addrs', [...new Set([...knownAddrs, ...allCocoonAddrs])]);
 
   // Dedup txs
   const txMap = new Map();
@@ -380,10 +426,15 @@ function error(res, code, msg) {
 const crawler = new CocoonCrawler(tc);
 // Register the known root contract
 crawler.checkAddress(ROOT_CONTRACT);
-// Scan the owner for any other root deployments
 crawler.scanDeployer('EQDnlslXI2RtI1WhLmtelkb4CVQGxr8E_xSIjl0Hg79jNhNQ').catch(() => {});
-// Start background block scanning (every 30s)
 crawler.start(30_000);
+
+// Run full discovery in background on startup if no cache
+if (!cache) {
+  console.log('[startup] No cache, running discovery in background...');
+  discovering = true;
+  discover().then(saveDiscoveryCache).catch(e => console.error('[startup] discovery failed:', e.message)).finally(() => { discovering = false; console.log('[startup] Discovery complete'); });
+}
 
 createServer(async (req, res) => {
   if (req.method === 'OPTIONS') {
@@ -410,17 +461,23 @@ createServer(async (req, res) => {
     }
 
     if (path === '/api/discover') {
-      // Serve from cache if fresh, or from disk if stale but exists
       if (cache && Date.now() - cacheTime < CACHE_TTL) return json(res, cache);
-      // If we have stale cache, return it immediately and refresh in background
       if (cache) {
+        // Stale cache: return immediately, refresh in background (once)
         json(res, cache);
-        discover().then(saveDiscoveryCache).catch(e => console.warn('[discover] bg refresh failed:', e.message));
+        if (!discovering) {
+          discovering = true;
+          discover().then(saveDiscoveryCache).catch(e => console.warn('[discover] bg fail:', e.message)).finally(() => { discovering = false; });
+        }
         return;
       }
-      // No cache at all — must wait
-      saveDiscoveryCache(await discover());
-      return json(res, cache);
+      // No cache: wait for first discovery
+      if (!discovering) {
+        discovering = true;
+        try { saveDiscoveryCache(await discover()); } finally { discovering = false; }
+      }
+      if (cache) return json(res, cache);
+      return error(res, 503, 'Discovery in progress, try again');
     }
 
     const addrMatch = path.match(/^\/api\/address\/(.+)$/);
