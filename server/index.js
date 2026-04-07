@@ -6,11 +6,21 @@ import { Cell, Address } from '@ton/core';
 import { CocoonCrawler } from './crawler.js';
 import { load, save } from './store.js';
 
-// Convert any TON address to non-bounceable (UQ) format
+// Convert any TON address to non-bounceable (UQ) format for display
 function toUQ(addr) {
   if (!addr) return addr;
   try {
     return Address.parse(addr).toString({ bounceable: false });
+  } catch {
+    return addr;
+  }
+}
+
+// Convert to bounceable (EQ) format for toncenter API calls
+function toEQ(addr) {
+  if (!addr) return addr;
+  try {
+    return Address.parse(addr).toString({ bounceable: true });
   } catch {
     return addr;
   }
@@ -553,7 +563,7 @@ createServer(async (req, res) => {
 
     // Check if a specific address is a cocoon contract
     if (path === '/api/check-root') {
-      const addr = url.searchParams.get('address');
+      const addr = toEQ(url.searchParams.get('address'));
       if (!addr) return error(res, 400, 'address required');
       const isRoot = await crawler.checkAddress(addr);
       return json(res, { address: addr, isRoot, knownRoots: crawler.getKnownRoots().length });
@@ -581,15 +591,14 @@ createServer(async (req, res) => {
 
     const addrMatch = path.match(/^\/api\/address\/(.+)$/);
     if (addrMatch) {
-      const addr = decodeURIComponent(addrMatch[1]);
-      // toncenter accepts both EQ and UQ formats
+      const addr = toEQ(decodeURIComponent(addrMatch[1]));
       const info = unwrap(await tc.get('/getAddressInformation', { params: { address: addr } }));
       return json(res, info);
     }
 
     const txMatch = path.match(/^\/api\/transactions\/(.+)$/);
     if (txMatch) {
-      const addr = decodeURIComponent(txMatch[1]);
+      const addr = toEQ(decodeURIComponent(txMatch[1]));
       const limit = parseInt(url.searchParams.get('limit')) || 30;
       const data = unwrap(await tc.get('/getTransactions', { params: { address: addr, limit } }));
       return json(res, data);
@@ -597,7 +606,7 @@ createServer(async (req, res) => {
 
     const typeMatch = path.match(/^\/api\/account-type\/(.+)$/);
     if (typeMatch) {
-      const addr = decodeURIComponent(typeMatch[1]);
+      const addr = toEQ(decodeURIComponent(typeMatch[1]));
       const info = unwrap(await tc.get('/getAddressInformation', { params: { address: addr } }));
       const type = classifyByCode(info.code);
       const codeHash = getCodeHash(info.code);
@@ -625,7 +634,7 @@ createServer(async (req, res) => {
     // Deep address analysis
     const analysisMatch = path.match(/^\/api\/analysis\/(.+)$/);
     if (analysisMatch) {
-      const addr = decodeURIComponent(analysisMatch[1]);
+      const addr = toEQ(decodeURIComponent(analysisMatch[1]));
       return json(res, await analyzeAddress(addr));
     }
 
