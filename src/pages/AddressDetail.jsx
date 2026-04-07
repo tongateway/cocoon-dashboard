@@ -9,6 +9,7 @@ import { getAddressInfo, getTransactions } from '../api/toncenter';
 import { getAccountInfo, classifyCocoonContract } from '../api/tonapi';
 import { ROOT_CONTRACT } from '../constants';
 import { nanoToTon, timeAgo, classifyTransaction, truncateAddress } from '../lib/formatters';
+import { parseTxOpcode, computeWalletSpend } from '../lib/opcodes';
 import AddressCell from '../components/AddressCell';
 
 const TYPE_COLORS = {
@@ -119,6 +120,8 @@ export default function AddressDetail({ networkData }) {
 
   const balance = nanoToTon(info?.balance || '0');
   const lastActivity = txs[0]?.utime || 0;
+  const isCocoonWallet = contractType === 'cocoon_wallet' || contractType === 'proxy' || contractType === 'client' || contractType === 'worker';
+  const spendStats = isCocoonWallet && txs.length > 0 ? computeWalletSpend(txs) : null;
 
   return (
     <Box px={{ base: 4, lg: 8 }} py={6} maxW="1400px" mx="auto">
@@ -203,6 +206,47 @@ export default function AddressDetail({ networkData }) {
             </CardBody>
           </Card>
         </SimpleGrid>
+
+        {/* Compute Spend Stats (cocoon contracts only) */}
+        {spendStats && (
+          <Card>
+            <CardHeader pb={2}>
+              <Heading size="sm" color="white">Compute Spend</Heading>
+            </CardHeader>
+            <CardBody>
+              <SimpleGrid columns={{ base: 2, md: 4 }} spacing={4} mb={4}>
+                <Box>
+                  <Text color="gray.400" fontSize="xs">Total Received</Text>
+                  <Text color="green.300" fontSize="lg" fontWeight="bold">{spendStats.totalReceived.toFixed(4)} TON</Text>
+                </Box>
+                <Box>
+                  <Text color="gray.400" fontSize="xs">Total Sent (Compute)</Text>
+                  <Text color="orange.300" fontSize="lg" fontWeight="bold">{spendStats.computeSpend.toFixed(4)} TON</Text>
+                </Box>
+                <Box>
+                  <Text color="gray.400" fontSize="xs">Network Fees</Text>
+                  <Text color="red.300" fontSize="lg" fontWeight="bold">{spendStats.totalFees.toFixed(4)} TON</Text>
+                </Box>
+                <Box>
+                  <Text color="gray.400" fontSize="xs">Current Balance</Text>
+                  <Text color="white" fontSize="lg" fontWeight="bold">{balance.toFixed(4)} TON</Text>
+                </Box>
+              </SimpleGrid>
+              {Object.keys(spendStats.opCounts).length > 0 && (
+                <Box>
+                  <Text color="gray.400" fontSize="xs" mb={2}>Operations Breakdown</Text>
+                  <HStack spacing={3} flexWrap="wrap">
+                    {Object.entries(spendStats.opCounts).sort((a, b) => b[1] - a[1]).map(([name, count]) => (
+                      <Badge key={name} colorScheme="teal" variant="outline" px={2} py={1}>
+                        {name}: {count}x
+                      </Badge>
+                    ))}
+                  </HStack>
+                </Box>
+              )}
+            </CardBody>
+          </Card>
+        )}
 
         {/* Network Relationships */}
         {networkRole.role !== 'unknown' && (
@@ -310,6 +354,7 @@ export default function AddressDetail({ networkData }) {
                     const inValue = parseInt(tx.in_msg?.value || '0');
                     const fee = parseInt(tx.fee || '0');
                     const txType = classifyTransaction(tx);
+                    const opcode = parseTxOpcode(tx);
                     return (
                       <Tr key={tx.transaction_id.lt + '-' + i} _hover={{ bg: 'whiteAlpha.50' }}>
                         <Td>
@@ -325,9 +370,17 @@ export default function AddressDetail({ networkData }) {
                           </Text>
                         </Td>
                         <Td>
-                          <Badge colorScheme={TYPE_COLORS[txType]} variant="subtle" fontSize="xs">
-                            {txType}
-                          </Badge>
+                          {opcode ? (
+                            <Tooltip label={`${opcode.desc} (${opcode.opcode})`} hasArrow>
+                              <Badge colorScheme={opcode.color} variant="subtle" fontSize="xs" cursor="help">
+                                {opcode.name}
+                              </Badge>
+                            </Tooltip>
+                          ) : (
+                            <Badge colorScheme={TYPE_COLORS[txType]} variant="subtle" fontSize="xs">
+                              {txType}
+                            </Badge>
+                          )}
                         </Td>
                         <Td isNumeric>
                           <Text fontSize="xs" color="gray.500" fontFamily="mono">

@@ -1,11 +1,12 @@
 import {
   Card, CardBody, CardHeader, Heading,
   Table, Thead, Tbody, Tr, Th, Td,
-  Badge, Text, Box, HStack,
+  Badge, Text, Box, HStack, Tooltip,
 } from '@chakra-ui/react';
 import { useMemo } from 'react';
 import AddressCell from './AddressCell';
 import { timeAgo, nanoToTon, classifyTransaction } from '../lib/formatters';
+import { parseTxOpcode } from '../lib/opcodes';
 
 const TYPE_COLORS = {
   payment: 'teal',
@@ -59,6 +60,7 @@ export default function TransactionFeed({ transactions }) {
                 const inValue = parseInt(tx.in_msg?.value || '0');
                 const fee = parseInt(tx.fee || '0');
                 const txType = classifyTransaction(tx);
+                const opcode = parseTxOpcode(tx);
 
                 return (
                   <Tr key={tx.transaction_id.lt + '-' + i} _hover={{ bg: 'whiteAlpha.50' }}>
@@ -75,9 +77,17 @@ export default function TransactionFeed({ transactions }) {
                       </Text>
                     </Td>
                     <Td>
-                      <Badge colorScheme={TYPE_COLORS[txType]} variant="subtle" fontSize="xs">
-                        {txType}
-                      </Badge>
+                      {opcode ? (
+                        <Tooltip label={`${opcode.desc} (${opcode.opcode})`} hasArrow placement="top">
+                          <Badge colorScheme={opcode.color} variant="subtle" fontSize="xs" cursor="help">
+                            {opcode.name}
+                          </Badge>
+                        </Tooltip>
+                      ) : (
+                        <Badge colorScheme={TYPE_COLORS[txType]} variant="subtle" fontSize="xs">
+                          {txType}
+                        </Badge>
+                      )}
                     </Td>
                     <Td isNumeric>
                       <Text fontSize="xs" color="gray.500" fontFamily="mono">
