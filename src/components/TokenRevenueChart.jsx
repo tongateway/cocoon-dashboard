@@ -1,4 +1,4 @@
-import { Card, CardBody, CardHeader, Heading, Box, Text, HStack, Badge } from '@chakra-ui/react';
+import { Card, CardBody, CardHeader, Heading, Box, Text, HStack, Badge, SimpleGrid } from '@chakra-ui/react';
 import { useMemo } from 'react';
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -12,46 +12,57 @@ function formatTokens(n) {
   return String(Math.round(n));
 }
 
-export default function TokenRevenueChart({ volumeData }) {
-  const chartData = useMemo(() => {
-    if (!volumeData || volumeData.length === 0) return [];
-    return volumeData.map(d => ({
-      date: d.date,
-      tokens: Math.round(d.tokensEstimated || 0),
-      revenue: parseFloat((d.revenue || 0).toFixed(4)),
-      txCount: d.txCount || 0,
-    })).filter(d => d.tokens > 0 || d.revenue > 0);
-  }, [volumeData]);
+export default function TokenRevenueChart({ computeMetrics }) {
+  if (!computeMetrics) return null;
 
-  // Totals
-  const totals = useMemo(() => {
-    let tokens = 0, revenue = 0;
-    for (const d of chartData) { tokens += d.tokens; revenue += d.revenue; }
-    return { tokens, revenue };
-  }, [chartData]);
+  const { daily, totals } = computeMetrics;
+
+  const chartData = useMemo(() => {
+    return (daily || []).map(d => ({
+      date: d.date,
+      tokens: d.tokensMix || 0,
+      spend: d.computeSpendTon || 0,
+      revenue: d.workerRevenueTon || 0,
+      txs: d.computeTxs || 0,
+    }));
+  }, [daily]);
+
+  const hasData = chartData.length > 0 && totals.computeSpendTon > 0;
 
   return (
     <Card>
       <CardHeader pb={0}>
-        <Box display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2}>
-          <Heading size="sm" color="white">Tokens & Revenue</Heading>
-          <HStack spacing={3}>
-            <Badge colorScheme="cyan" variant="subtle" px={2} py={1}>
-              {formatTokens(totals.tokens)} tokens
-            </Badge>
-            <Badge colorScheme="green" variant="subtle" px={2} py={1}>
-              {totals.revenue.toFixed(2)} TON revenue
-            </Badge>
-          </HStack>
-        </Box>
+        <Heading size="sm" color="white" mb={3}>Tokens & Revenue</Heading>
+        {/* Summary stats */}
+        <SimpleGrid columns={{ base: 2, md: 4 }} spacing={3} mb={2}>
+          <Box>
+            <Text fontSize="xs" color="gray.500">Compute Spend</Text>
+            <Text fontSize="lg" color="orange.300" fontWeight="bold">{totals.computeSpendTon.toFixed(4)} TON</Text>
+          </Box>
+          <Box>
+            <Text fontSize="xs" color="gray.500">Worker Revenue</Text>
+            <Text fontSize="lg" color="green.300" fontWeight="bold">{totals.workerRevenueTon.toFixed(4)} TON</Text>
+          </Box>
+          <Box>
+            <Text fontSize="xs" color="gray.500">Tokens (prompt est.)</Text>
+            <Text fontSize="lg" color="cyan.300" fontWeight="bold">{formatTokens(totals.tokensPrompt)}</Text>
+          </Box>
+          <Box>
+            <Text fontSize="xs" color="gray.500">Tokens (completion est.)</Text>
+            <Text fontSize="lg" color="purple.300" fontWeight="bold">{formatTokens(totals.tokensCompletion)}</Text>
+          </Box>
+        </SimpleGrid>
+        <Text fontSize="xs" color="gray.600">
+          Based on real compute opcodes (client_proxy_request, worker payouts). Price: 20 nanoTON/token base.
+        </Text>
       </CardHeader>
       <CardBody>
-        {chartData.length === 0 ? (
-          <Box h="280px" display="flex" alignItems="center" justifyContent="center">
-            <Text color="gray.500">No token usage data yet</Text>
+        {!hasData ? (
+          <Box h="250px" display="flex" alignItems="center" justifyContent="center">
+            <Text color="gray.500">No compute transactions found</Text>
           </Box>
         ) : (
-          <ResponsiveContainer width="100%" height={280}>
+          <ResponsiveContainer width="100%" height={250}>
             <ComposedChart data={chartData} margin={{ top: 5, right: 10, left: -10, bottom: 5 }}>
               <defs>
                 <linearGradient id="tokenGrad" x1="0" y1="0" x2="0" y2="1">
@@ -68,27 +79,29 @@ export default function TokenRevenueChart({ volumeData }) {
                 tickFormatter={v => formatTokens(v)}
               />
               <YAxis
-                yAxisId="revenue"
+                yAxisId="ton"
                 orientation="right"
                 stroke="#48BB78"
                 fontSize={10}
-                tickFormatter={v => `${v.toFixed(1)}`}
+                tickFormatter={v => v.toFixed(2)}
               />
               <Tooltip
                 contentStyle={{ background: '#161b22', border: '1px solid #30363d', borderRadius: '8px' }}
                 labelStyle={{ color: '#8b949e' }}
                 formatter={(value, name) => {
-                  if (name === 'tokens') return [formatTokens(value), 'Tokens (est.)'];
-                  if (name === 'revenue') return [`${value.toFixed(4)} TON`, 'Revenue'];
+                  if (name === 'tokens') return [formatTokens(value), 'Tokens (~3x mix)'];
+                  if (name === 'spend') return [value.toFixed(4) + ' TON', 'Compute Spend'];
+                  if (name === 'revenue') return [value.toFixed(4) + ' TON', 'Worker Revenue'];
                   return [value, name];
                 }}
               />
               <Legend
                 wrapperStyle={{ fontSize: 11, color: '#8b949e' }}
-                formatter={(value) => value === 'tokens' ? 'Tokens (est.)' : 'Revenue (TON)'}
+                formatter={(v) => v === 'tokens' ? 'Tokens (~3x mix)' : v === 'spend' ? 'Compute Spend (TON)' : 'Worker Revenue (TON)'}
               />
               <Bar yAxisId="tokens" dataKey="tokens" fill="url(#tokenGrad)" radius={[4, 4, 0, 0]} barSize={20} />
-              <Line yAxisId="revenue" type="monotone" dataKey="revenue" stroke="#48BB78" strokeWidth={2} dot={{ r: 3, fill: '#48BB78' }} />
+              <Line yAxisId="ton" type="monotone" dataKey="spend" stroke="#DD6B20" strokeWidth={2} dot={{ r: 3 }} />
+              <Line yAxisId="ton" type="monotone" dataKey="revenue" stroke="#48BB78" strokeWidth={2} dot={{ r: 3 }} />
             </ComposedChart>
           </ResponsiveContainer>
         )}

@@ -22,6 +22,7 @@ function toMaps(raw) {
   for (const c of raw.clients || []) data.clients.set(c.address, c);
   for (const w of raw.workers || []) data.workers.set(w.address, w);
   for (const cw of raw.cocoonWallets || []) data.cocoonWallets.set(cw.address, cw);
+  data.computeMetrics = raw.computeMetrics || null;
 
   return data;
 }

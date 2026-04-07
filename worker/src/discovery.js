@@ -132,8 +132,82 @@ export async function runDiscovery(tc, kv, rootContract) {
   for (const tx of result.transactions) txMap.set(tx.transaction_id.lt + tx.transaction_id.hash, tx);
   result.transactions = [...txMap.values()].sort((a, b) => b.utime - a.utime);
 
+  // 7. Compute real token/revenue metrics from opcodes + contract types
+  const proxyAddrs = new Set(result.proxies.map(p => p.address));
+  const clientAddrs = new Set(result.clients.map(c => c.address));
+  const workerAddrs = new Set(result.workers.map(w => w.address));
+  const walletAddrs = new Set(result.cocoonWallets.map(w => w.address));
+
+  // Only count each flow ONCE from the correct contract's perspective:
+  // - Compute spend: IN to proxy (client_proxy_request) + IN to client (ext_client_charge_signed)
+  // - Worker revenue: IN to worker (ext_worker_payout_signed)
+
+  const dailyMetrics = {};
+  let totalComputeSpend = 0, totalWorkerRevenue = 0;
+
+  for (const tx of result.transactions) {
+    const role = tx.contractRole;
+    const day = new Date(tx.utime * 1000).toISOString().slice(0, 10);
+    if (!dailyMetrics[day]) dailyMetrics[day] = { date: day, computeSpend: 0, workerRevenue: 0, computeTxs: 0 };
+
+    const inOp = extractOp(tx.in_msg?.msg_data?.body);
+    const inVal = parseInt(tx.in_msg?.value || '0');
+
+    // Compute spend: client charges (only from proxy or client contract perspective)
+    if (role === 'cocoon_proxy' && inOp === 'client_proxy_request' && inVal > 0) {
+      dailyMetrics[day].computeSpend += inVal;
+      dailyMetrics[day].computeTxs++;
+      totalComputeSpend += inVal;
+    }
+    if (role === 'cocoon_client' && inOp === 'ext_client_charge_signed' && inVal > 0) {
+      dailyMetrics[day].computeSpend += inVal;
+      dailyMetrics[day].computeTxs++;
+      totalComputeSpend += inVal;
+    }
+
+    // Worker revenue: payouts received by workers
+    if (role === 'cocoon_worker' && inOp === 'ext_worker_payout_signed' && inVal > 0) {
+      dailyMetrics[day].workerRevenue += inVal;
+      totalWorkerRevenue += inVal;
+    }
+  }
+
+  // Convert to arrays and add token estimates
+  // price_per_token = 20 nanoTON, avg ~3x multiplier = 60 nanoTON effective
+  const pricePerToken = 20; // nanoTON base from root contract
+  result.computeMetrics = {
+    daily: Object.values(dailyMetrics)
+      .map(d => ({
+        date: d.date,
+        computeSpendTon: d.computeSpend / 1e9,
+        workerRevenueTon: d.workerRevenue / 1e9,
+        computeTxs: d.computeTxs,
+        // Token estimates at different multipliers
+        tokensPrompt: Math.round(d.computeSpend / pricePerToken),          // 1x
+        tokensCompletion: Math.round(d.computeSpend / (pricePerToken * 8)), // 8x
+        tokensMix: Math.round(d.computeSpend / (pricePerToken * 3)),        // ~3x avg
+      }))
+      .filter(d => d.computeSpendTon > 0 || d.workerRevenueTon > 0)
+      .sort((a, b) => a.date.localeCompare(b.date)),
+    totals: {
+      computeSpendTon: totalComputeSpend / 1e9,
+      workerRevenueTon: totalWorkerRevenue / 1e9,
+      tokensPrompt: Math.round(totalComputeSpend / pricePerToken),
+      tokensCompletion: Math.round(totalComputeSpend / (pricePerToken * 8)),
+      tokensMix: Math.round(totalComputeSpend / (pricePerToken * 3)),
+    },
+  };
+
+  console.log(`[discover] compute: ${result.computeMetrics.totals.computeSpendTon.toFixed(2)} TON spent, ~${formatNum(result.computeMetrics.totals.tokensMix)} tokens (mix)`);
   console.log(`[discover] done: ${result.proxies.length}P ${result.clients.length}C ${result.workers.length}W ${result.cocoonWallets.length}CW`);
   return result;
+}
+
+function formatNum(n) {
+  if (n >= 1e9) return (n/1e9).toFixed(1)+'B';
+  if (n >= 1e6) return (n/1e6).toFixed(1)+'M';
+  if (n >= 1e3) return (n/1e3).toFixed(0)+'K';
+  return String(n);
 }
 
 async function classifyAddr(tc, addr) {

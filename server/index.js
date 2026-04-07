@@ -354,7 +354,62 @@ async function discover() {
   for (const tx of result.transactions) txMap.set(tx.transaction_id.lt + tx.transaction_id.hash, tx);
   result.transactions = [...txMap.values()].sort((a, b) => b.utime - a.utime);
 
-  console.log(`[discover] done: ${result.proxies.length}P ${result.clients.length}C ${result.workers.length}W ${result.cocoonWallets.length}CW ${result.relatedWallets.length}RW`);
+  // 6. Compute real token/revenue metrics — count each flow ONCE
+  const dailyMetrics = {};
+  let totalComputeSpend = 0, totalWorkerRevenue = 0;
+
+  for (const tx of result.transactions) {
+    const role = tx.contractRole;
+    const day = new Date(tx.utime * 1000).toISOString().slice(0, 10);
+    if (!dailyMetrics[day]) dailyMetrics[day] = { date: day, computeSpend: 0, workerRevenue: 0, computeTxs: 0 };
+
+    const inOp = extractOp(tx.in_msg?.msg_data?.body);
+    const inVal = parseInt(tx.in_msg?.value || '0');
+
+    // Compute: client_proxy_request arriving at proxy
+    if (role === 'proxy' && inOp === 'client_proxy_request' && inVal > 0) {
+      dailyMetrics[day].computeSpend += inVal;
+      dailyMetrics[day].computeTxs++;
+      totalComputeSpend += inVal;
+    }
+    // Compute: ext_client_charge_signed arriving at client contract
+    if (role === 'cocoon_client' && inOp === 'ext_client_charge_signed' && inVal > 0) {
+      dailyMetrics[day].computeSpend += inVal;
+      dailyMetrics[day].computeTxs++;
+      totalComputeSpend += inVal;
+    }
+    // Worker revenue: ext_worker_payout_signed arriving at worker
+    if (role === 'cocoon_worker' && inOp === 'ext_worker_payout_signed' && inVal > 0) {
+      dailyMetrics[day].workerRevenue += inVal;
+      totalWorkerRevenue += inVal;
+    }
+  }
+
+  const pricePerToken = 20;
+  result.computeMetrics = {
+    daily: Object.values(dailyMetrics)
+      .map(d => ({
+        date: d.date,
+        computeSpendTon: d.computeSpend / 1e9,
+        workerRevenueTon: d.workerRevenue / 1e9,
+        computeTxs: d.computeTxs,
+        tokensPrompt: Math.round(d.computeSpend / pricePerToken),
+        tokensCompletion: Math.round(d.computeSpend / (pricePerToken * 8)),
+        tokensMix: Math.round(d.computeSpend / (pricePerToken * 3)),
+      }))
+      .filter(d => d.computeSpendTon > 0 || d.workerRevenueTon > 0)
+      .sort((a, b) => a.date.localeCompare(b.date)),
+    totals: {
+      computeSpendTon: totalComputeSpend / 1e9,
+      workerRevenueTon: totalWorkerRevenue / 1e9,
+      tokensPrompt: Math.round(totalComputeSpend / pricePerToken),
+      tokensCompletion: Math.round(totalComputeSpend / (pricePerToken * 8)),
+      tokensMix: Math.round(totalComputeSpend / (pricePerToken * 3)),
+    },
+  };
+
+  console.log(`[discover] compute: ${result.computeMetrics.totals.computeSpendTon.toFixed(4)} TON, ~${result.computeMetrics.totals.tokensMix} tokens (mix)`);
+  console.log(`[discover] done: ${result.proxies.length}P ${result.clients.length}C ${result.workers.length}W ${result.cocoonWallets.length}CW`);
   return result;
 }
 

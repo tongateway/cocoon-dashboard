@@ -32,7 +32,7 @@ function Dashboard({ data, stats, error }) {
           </GridItem>
         </Grid>
 
-        <TokenRevenueChart volumeData={stats?.volumeData} />
+        <TokenRevenueChart computeMetrics={data?.computeMetrics} />
 
         <ProxyCards rootConfig={data?.root?.config} proxies={data?.proxies} clients={data?.clients} workers={data?.workers} cocoonWallets={data?.cocoonWallets} />
 
