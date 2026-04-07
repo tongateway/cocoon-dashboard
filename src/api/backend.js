@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'https://cocoon-dashboard-api.reist01.workers.dev';
+const API_BASE = import.meta.env.VITE_API_URL || 'https://cocoon-dashboard-api.jarvis-agent.workers.dev';
 
 const client = axios.create({
   baseURL: API_BASE,

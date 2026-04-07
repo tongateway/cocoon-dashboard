@@ -1,11 +1,11 @@
 name = "cocoon-dashboard-api"
 main = "src/index.js"
 compatibility_date = "2024-12-01"
-account_id = "48c22e79108c451f30c9a1ebdbb6256a"
+account_id = "67fed51af58855d4ea1ea0263f4da84d"
 
 [[kv_namespaces]]
 binding = "COCOON_KV"
-id = "bf2b105bb8e9409ba378ce76fe93c2d7"
+id = "c30c92336d7d4e119093f389472cbe6b"
 
 # Cron trigger — run discovery every 5 minutes
 [triggers]

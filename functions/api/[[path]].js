@@ -10,7 +10,7 @@ export async function onRequest(context) {
   }
 
   // Fallback: proxy to the Worker directly by URL
-  const workerUrl = env.WORKER_URL || 'https://cocoon-dashboard-api.reist01.workers.dev';
+  const workerUrl = env.WORKER_URL || 'https://cocoon-dashboard-api.jarvis-agent.workers.dev';
   const url = new URL(request.url);
   const apiUrl = workerUrl + url.pathname + url.search;
 
