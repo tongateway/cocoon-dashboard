@@ -422,6 +422,105 @@ function error(res, code, msg) {
   res.end(JSON.stringify({ error: msg }));
 }
 
+// --- Address analysis ---
+async function analyzeAddress(addr) {
+  const info = unwrap(await tc.get('/getAddressInformation', { params: { address: addr } }));
+  const type = classifyByCode(info.code);
+
+  // Get all transactions (up to 500)
+  let allTxs = [], lt, hash;
+  for (let i = 0; i < 10; i++) {
+    const p = { address: addr, limit: 50 }; if (lt) { p.lt = lt; p.hash = hash; }
+    const txs = unwrap(await tc.get('/getTransactions', { params: p }));
+    allTxs.push(...txs); if (txs.length < 50) break;
+    const last = txs[txs.length - 1]; lt = last.transaction_id.lt; hash = last.transaction_id.hash;
+  }
+
+  // Financial flows
+  let totalIn = 0, totalOut = 0, totalFees = 0;
+  const opCounts = {};
+  const peers = new Map();
+
+  for (const tx of allTxs) {
+    const inVal = parseInt(tx.in_msg?.value || '0');
+    const fee = parseInt(tx.fee || '0');
+    totalIn += inVal;
+    totalFees += fee;
+
+    const inOp = extractOp(tx.in_msg?.msg_data?.body);
+    if (inOp) opCounts[inOp] = (opCounts[inOp] || 0) + 1;
+
+    const src = tx.in_msg?.source;
+    if (src) {
+      if (!peers.has(src)) peers.set(src, { inFlow: 0, outFlow: 0 });
+      peers.get(src).inFlow += inVal;
+    }
+
+    for (const m of tx.out_msgs || []) {
+      const outVal = parseInt(m.value || '0');
+      totalOut += outVal;
+      const outOp = extractOp(m.msg_data?.body);
+      if (outOp) opCounts[outOp] = (opCounts[outOp] || 0) + 1;
+      if (m.destination) {
+        if (!peers.has(m.destination)) peers.set(m.destination, { inFlow: 0, outFlow: 0 });
+        peers.get(m.destination).outFlow += outVal;
+      }
+    }
+  }
+
+  // Classify peers
+  const connections = [];
+  for (const [pAddr, flows] of [...peers.entries()].sort((a, b) => (b[1].inFlow + b[1].outFlow) - (a[1].inFlow + a[1].outFlow)).slice(0, 15)) {
+    try {
+      const pInfo = unwrap(await tc.get('/getAddressInformation', { params: { address: pAddr } }));
+      const pType = classifyByCode(pInfo.code);
+      connections.push({
+        address: pAddr,
+        type: pType.startsWith('cocoon_') ? pType : (pInfo.code?.length < 1000 ? 'wallet' : 'unknown'),
+        balance: pInfo.balance,
+        tonReceived: flows.inFlow,
+        tonSent: flows.outFlow,
+      });
+    } catch {
+      connections.push({ address: pAddr, type: 'unknown', balance: '0', tonReceived: flows.inFlow, tonSent: flows.outFlow });
+    }
+  }
+
+  // Token estimates (root contract: price_per_token = 20 nanoTON)
+  const computeSpend = totalOut;
+  const tokenEstimates = {
+    pricePerToken: 20,
+    prompt: { multiplier: 1, priceNano: 20, tokens: Math.round(computeSpend / 20) },
+    completion: { multiplier: 8, priceNano: 160, tokens: Math.round(computeSpend / 160) },
+    reasoning: { multiplier: 8, priceNano: 160, tokens: Math.round(computeSpend / 160) },
+    cached: { multiplier: 0.1, priceNano: 2, tokens: Math.round(computeSpend / 2) },
+    estimatedMix: Math.round(computeSpend / 60), // ~3x average
+  };
+
+  // Activity period
+  const firstTx = allTxs.length > 0 ? allTxs[allTxs.length - 1].utime : 0;
+  const lastTx = allTxs.length > 0 ? allTxs[0].utime : 0;
+
+  return {
+    address: addr,
+    type,
+    codeHash: getCodeHash(info.code),
+    balance: info.balance,
+    state: info.state,
+    totalTransactions: allTxs.length,
+    financials: {
+      totalReceived: totalIn,
+      totalSent: totalOut,
+      totalFees,
+      computeSpend: totalOut,
+    },
+    tokenEstimates,
+    operations: Object.entries(opCounts).sort((a, b) => b[1] - a[1]).map(([name, count]) => ({ name, count })),
+    connections,
+    activity: { firstTx, lastTx, durationDays: firstTx && lastTx ? Math.max(1, Math.round((lastTx - firstTx) / 86400)) : 0 },
+  };
+}
+
 // --- Crawler ---
 const crawler = new CocoonCrawler(tc);
 // Register the known root contract
@@ -521,6 +620,13 @@ createServer(async (req, res) => {
         status: info.state,
         opcodes: [...ops],
       });
+    }
+
+    // Deep address analysis
+    const analysisMatch = path.match(/^\/api\/analysis\/(.+)$/);
+    if (analysisMatch) {
+      const addr = decodeURIComponent(analysisMatch[1]);
+      return json(res, await analyzeAddress(addr));
     }
 
     error(res, 404, 'Not found');

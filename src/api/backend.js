@@ -26,3 +26,8 @@ export async function fetchAccountType(address) {
   const res = await client.get(`/api/account-type/${address}`);
   return res.data;
 }
+
+export async function fetchAnalysis(address) {
+  const res = await client.get(`/api/analysis/${address}`, { timeout: 60_000 });
+  return res.data;
+}
