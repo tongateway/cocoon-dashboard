@@ -4,6 +4,7 @@ import axios from 'axios';
 import crypto from 'crypto';
 import { Cell, Address } from '@ton/core';
 import { CocoonCrawler } from './crawler.js';
+import { load, save } from './store.js';
 
 // Convert any TON address to non-bounceable (UQ) format
 function toUQ(addr) {
@@ -166,10 +167,18 @@ function parseRootContract(dataBase64) {
   }
 }
 
-// --- Cache ---
-let cache = null;
-let cacheTime = 0;
+// --- Cache (in-memory + disk) ---
 const CACHE_TTL = 120_000;
+const stored = load('discovery_cache', null);
+let cache = stored?.data || null;
+let cacheTime = stored?.timestamp || 0;
+if (cache) console.log(`[cache] Loaded discovery cache (age: ${Math.round((Date.now() - cacheTime) / 1000)}s)`);
+
+function saveDiscoveryCache(data) {
+  cache = data;
+  cacheTime = Date.now();
+  save('discovery_cache', { data, timestamp: cacheTime });
+}
 
 // --- Discovery ---
 async function getAllTxs(address, maxPages = 3) {
@@ -401,9 +410,16 @@ createServer(async (req, res) => {
     }
 
     if (path === '/api/discover') {
+      // Serve from cache if fresh, or from disk if stale but exists
       if (cache && Date.now() - cacheTime < CACHE_TTL) return json(res, cache);
-      cache = await discover();
-      cacheTime = Date.now();
+      // If we have stale cache, return it immediately and refresh in background
+      if (cache) {
+        json(res, cache);
+        discover().then(saveDiscoveryCache).catch(e => console.warn('[discover] bg refresh failed:', e.message));
+        return;
+      }
+      // No cache at all — must wait
+      saveDiscoveryCache(await discover());
       return json(res, cache);
     }
 

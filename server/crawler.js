@@ -1,7 +1,8 @@
 // Blockchain crawler - scans new blocks for cocoon contract deployments
-// Runs as background job in the server
+// Persists state to disk so it doesn't rescan on restart
 
 import crypto from 'crypto';
+import { load, save } from './store.js';
 
 const CODE_TYPES = {
   'cfd7fb56c93c4e68': 'cocoon_root',
@@ -20,10 +21,26 @@ function classifyCode(codeBase64) {
 export class CocoonCrawler {
   constructor(toncenterClient) {
     this.tc = toncenterClient;
-    this.knownRoots = new Map(); // address -> { balance, state, config }
-    this.lastSeqno = 0;
     this.scanning = false;
     this.scanInterval = null;
+
+    // Load persisted state
+    const state = load('crawler_state', { knownRoots: {}, lastSeqno: 0, deployersScanned: [] });
+    this.knownRoots = new Map(Object.entries(state.knownRoots));
+    this.lastSeqno = state.lastSeqno;
+    this.deployersScanned = new Set(state.deployersScanned);
+
+    if (this.knownRoots.size > 0) {
+      console.log(`[crawler] Loaded ${this.knownRoots.size} known roots, lastSeqno=${this.lastSeqno}`);
+    }
+  }
+
+  persist() {
+    save('crawler_state', {
+      knownRoots: Object.fromEntries(this.knownRoots),
+      lastSeqno: this.lastSeqno,
+      deployersScanned: [...this.deployersScanned],
+    });
   }
 
   unwrap(r) {
@@ -31,10 +48,9 @@ export class CocoonCrawler {
     return r.data.result;
   }
 
-  // Start periodic scanning
   start(intervalMs = 30_000) {
     console.log('[crawler] Starting block scanner...');
-    this.scan(); // Initial scan
+    this.scan();
     this.scanInterval = setInterval(() => this.scan(), intervalMs);
   }
 
@@ -51,12 +67,10 @@ export class CocoonCrawler {
     this.scanning = true;
 
     try {
-      // Get current masterchain info
       const mcInfo = this.unwrap(await this.tc.get('/getMasterchainInfo'));
       const currentSeqno = mcInfo.last.seqno;
 
       if (this.lastSeqno === 0) {
-        // First run: scan last 100 blocks
         this.lastSeqno = Math.max(1, currentSeqno - 100);
         console.log(`[crawler] Initial scan: blocks ${this.lastSeqno} to ${currentSeqno}`);
       }
@@ -66,19 +80,15 @@ export class CocoonCrawler {
         return;
       }
 
-      // Scan new blocks (limit to 20 per cycle to avoid overloading)
       const startSeqno = this.lastSeqno + 1;
       const endSeqno = Math.min(currentSeqno, startSeqno + 20);
 
       for (let seqno = startSeqno; seqno <= endSeqno; seqno++) {
-        try {
-          await this.scanBlock(seqno);
-        } catch (e) {
-          // Block might not exist or be accessible
-        }
+        try { await this.scanBlock(seqno); } catch {}
       }
 
       this.lastSeqno = endSeqno;
+      this.persist();
     } catch (e) {
       console.warn('[crawler] Scan error:', e.message);
     }
@@ -87,13 +97,8 @@ export class CocoonCrawler {
   }
 
   async scanBlock(seqno) {
-    // Get shards for this masterchain block
     const shards = this.unwrap(await this.tc.get('/getShards', { params: { seqno } }));
-
-    // Check masterchain block transactions
     await this.scanBlockTxs(-1, '-9223372036854775808', seqno);
-
-    // Check each shard block
     for (const shard of shards.shards || []) {
       await this.scanBlockTxs(shard.workchain, shard.shard, shard.seqno);
     }
@@ -104,26 +109,14 @@ export class CocoonCrawler {
       const blockTxs = this.unwrap(await this.tc.get('/getBlockTransactions', {
         params: { workchain, shard, seqno, count: 40 },
       }));
-
       for (const txRef of blockTxs.transactions || []) {
-        const addr = txRef.account;
-        if (!addr) continue;
-
-        // Check if this is a new cocoon contract
-        // Only check addresses we haven't seen
-        const friendlyAddr = `${workchain}:${addr}`;
+        if (!txRef.account) continue;
+        const friendlyAddr = `${workchain}:${txRef.account}`;
         if (this.knownRoots.has(friendlyAddr)) continue;
-
-        // We can't easily check code hash from block transactions
-        // Instead, check the account if it received a deploy (state_init)
-        // For efficiency, only check accounts in workchain 0 (basechain)
       }
-    } catch {
-      // Some blocks might not be accessible
-    }
+    } catch {}
   }
 
-  // Direct method: check a specific address if it's a cocoon root
   async checkAddress(address) {
     try {
       const info = this.unwrap(await this.tc.get('/getAddressInformation', { params: { address } }));
@@ -136,6 +129,7 @@ export class CocoonCrawler {
           discoveredAt: Date.now(),
         });
         console.log(`[crawler] Found root contract: ${address}`);
+        this.persist();
         return true;
       }
       return false;
@@ -144,8 +138,12 @@ export class CocoonCrawler {
     }
   }
 
-  // Scan deployer wallet for root contract deployments
   async scanDeployer(deployerAddress) {
+    if (this.deployersScanned.has(deployerAddress)) {
+      console.log(`[crawler] Deployer ${deployerAddress.slice(0, 25)}... already scanned, skipping`);
+      return 0;
+    }
+
     console.log(`[crawler] Scanning deployer ${deployerAddress.slice(0, 25)}...`);
     let lt, hash;
     let found = 0;
@@ -153,11 +151,9 @@ export class CocoonCrawler {
     for (let page = 0; page < 10; page++) {
       const params = { address: deployerAddress, limit: 50 };
       if (lt) { params.lt = lt; params.hash = hash; }
-
       const txs = this.unwrap(await this.tc.get('/getTransactions', { params }));
       if (txs.length === 0) break;
 
-      // Check all destination addresses
       const dests = new Set();
       for (const tx of txs) {
         for (const m of tx.out_msgs || []) {
@@ -176,6 +172,8 @@ export class CocoonCrawler {
       hash = last.transaction_id.hash;
     }
 
+    this.deployersScanned.add(deployerAddress);
+    this.persist();
     console.log(`[crawler] Deployer scan complete: ${found} new root(s) found`);
     return found;
   }
