@@ -354,6 +354,22 @@ async function discover() {
   for (const tx of result.transactions) txMap.set(tx.transaction_id.lt + tx.transaction_id.hash, tx);
   result.transactions = [...txMap.values()].sort((a, b) => b.utime - a.utime);
 
+  // 5b. Ensure ALL proxies, clients, workers have their txs crawled
+  const criticalContracts = [...result.proxies, ...result.clients, ...result.workers];
+  for (const contract of criticalContracts) {
+    const hasTxs = result.transactions.some(tx =>
+      tx.contractRole === contract.type &&
+      (tx.in_msg?.destination === contract.address || tx.address?.account_address === contract.address)
+    );
+    if (hasTxs) continue;
+    try {
+      const txs = await getAllTxs(contract.address, 2);
+      contract.lastActivity = txs[0]?.utime || 0;
+      result.transactions.push(...txs.map(tx => ({ ...tx, contractRole: contract.type })));
+      console.log(`[discover] crawled ${contract.type}: ${contract.address.slice(0,25)}...`);
+    } catch {}
+  }
+
   // 6. Compute real token/revenue metrics — count each flow ONCE
   const dailyMetrics = {};
   let totalComputeSpend = 0, totalWorkerRevenue = 0;

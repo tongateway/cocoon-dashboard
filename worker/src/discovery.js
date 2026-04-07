@@ -132,6 +132,21 @@ export async function runDiscovery(tc, kv, rootContract) {
   for (const tx of result.transactions) txMap.set(tx.transaction_id.lt + tx.transaction_id.hash, tx);
   result.transactions = [...txMap.values()].sort((a, b) => b.utime - a.utime);
 
+  // 6b. Ensure ALL discovered proxies, clients, and workers have their txs crawled
+  const criticalContracts = [...result.proxies, ...result.clients, ...result.workers];
+  for (const contract of criticalContracts) {
+    // Check if we already have txs for this contract
+    const hasTxs = result.transactions.some(tx => tx.contractRole === contract.type &&
+      (tx.in_msg?.destination === contract.address || tx.address?.account_address === contract.address));
+    if (hasTxs) continue;
+
+    try {
+      const txs = await tc.getAllTxs(contract.address, 2);
+      contract.lastActivity = txs[0]?.utime || 0;
+      result.transactions.push(...txs.map(tx => ({ ...tx, contractRole: contract.type })));
+    } catch {}
+  }
+
   // 7. Compute real token/revenue metrics from opcodes + contract types
   const proxyAddrs = new Set(result.proxies.map(p => p.address));
   const clientAddrs = new Set(result.clients.map(c => c.address));
