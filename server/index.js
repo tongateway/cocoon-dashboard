@@ -222,12 +222,12 @@ async function discover() {
     } catch {}
   }
 
-  // 4. BFS crawl from all discovered cocoon contracts
+  // 4. BFS crawl from all discovered cocoon contracts (deep: up to 5 pages per contract)
   let idx = 0;
   while (idx < cocoonQueue.length) {
     const { address: addr, type } = cocoonQueue[idx++];
     try {
-      const txs = await getAllTxs(addr, 1);
+      const txs = await getAllTxs(addr, 5);
       const entry = findEntry(result, addr);
       if (entry) entry.lastActivity = txs[0]?.utime || 0;
 
