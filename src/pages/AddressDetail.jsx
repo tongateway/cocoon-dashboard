@@ -5,8 +5,7 @@ import {
   Badge, Spinner, Center, Button, SimpleGrid, Table, Thead, Tbody,
   Tr, Th, Td, Divider, useClipboard, Tooltip, IconButton, Link,
 } from '@chakra-ui/react';
-import { getAddressInfo, getTransactions } from '../api/toncenter';
-import { getAccountInfo, classifyCocoonContract } from '../api/tonapi';
+import { fetchAddressInfo, fetchTransactions, fetchAccountType } from '../api/backend';
 import { ROOT_CONTRACT } from '../constants';
 import { nanoToTon, timeAgo, classifyTransaction, truncateAddress } from '../lib/formatters';
 import { parseTxOpcode, computeWalletSpend } from '../lib/opcodes';
@@ -37,17 +36,21 @@ export default function AddressDetail({ networkData }) {
       setLoading(true);
       setError(null);
       const [addrInfo, addrTxs] = await Promise.all([
-        getAddressInfo(address),
-        getTransactions(address, 30),
+        fetchAddressInfo(address),
+        fetchTransactions(address, 30),
       ]);
       setInfo(addrInfo);
       setTxs(addrTxs);
 
-      // Get contract type from tonapi.io
+      // Get contract type from backend (tonapi proxy)
       try {
-        const tonapiInfo = await getAccountInfo(address);
-        setContractType(classifyCocoonContract(tonapiInfo));
-        setInterfaces(tonapiInfo.interfaces || []);
+        const typeInfo = await fetchAccountType(address);
+        const ifaces = typeInfo.interfaces || [];
+        setInterfaces(ifaces);
+        const cocoon = ifaces.find(i => i.startsWith('cocoon_'));
+        if (cocoon) setContractType(cocoon.replace('cocoon_', ''));
+        else if (typeInfo.is_wallet) setContractType('wallet');
+        else setContractType(null);
       } catch {
         setContractType(null);
         setInterfaces([]);
@@ -68,7 +71,7 @@ export default function AddressDetail({ networkData }) {
     setLoadingMore(true);
     try {
       const lastTx = txs[txs.length - 1];
-      const moreTxs = await getTransactions(address, 30);
+      const moreTxs = await fetchTransactions(address, 30);
       // Use lt cursor for pagination
       const filtered = moreTxs.filter(tx =>
         parseInt(tx.transaction_id.lt) < parseInt(lastTx.transaction_id.lt)

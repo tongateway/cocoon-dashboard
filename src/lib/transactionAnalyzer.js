@@ -1,8 +1,9 @@
 import { getTransactions, getAddressInfo } from '../api/toncenter';
 import { getAccountInfo, classifyCocoonContract } from '../api/tonapi';
+import { COCOON_SEEDS } from '../constants';
 
 const CACHE_KEY = 'cocoon_discovery_cache';
-const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const CACHE_TTL_MS = 5 * 60 * 1000;
 
 function loadCache() {
   try {
@@ -10,7 +11,6 @@ function loadCache() {
     if (!raw) return null;
     const cached = JSON.parse(raw);
     if (Date.now() - cached.timestamp > CACHE_TTL_MS) return null;
-    // Restore Maps from arrays
     cached.data.proxies = new Map(cached.data.proxies || []);
     cached.data.clients = new Map(cached.data.clients || []);
     cached.data.workers = new Map(cached.data.workers || []);
@@ -20,50 +20,43 @@ function loadCache() {
       proxy.workers = new Map(proxy.workers || []);
     }
     return cached.data;
-  } catch {
-    return null;
-  }
+  } catch { return null; }
 }
 
 function saveCache(data) {
   try {
-    const serializable = {
+    const s = {
       ...data,
       proxies: [...data.proxies.entries()].map(([k, v]) => [k, {
-        ...v,
-        clients: [...(v.clients || new Map()).entries()],
+        ...v, clients: [...(v.clients || new Map()).entries()],
         workers: [...(v.workers || new Map()).entries()],
       }]),
       clients: [...data.clients.entries()],
       workers: [...data.workers.entries()],
       cocoonWallets: [...data.cocoonWallets.entries()],
     };
-    localStorage.setItem(CACHE_KEY, JSON.stringify({ timestamp: Date.now(), data: serializable }));
-  } catch {
-    // localStorage might be full
-  }
+    localStorage.setItem(CACHE_KEY, JSON.stringify({ timestamp: Date.now(), data: s }));
+  } catch { /* full */ }
 }
 
-async function classifyAddress(address) {
+async function classifyAddress(addr) {
   try {
-    const info = await getAccountInfo(address);
+    const info = await getAccountInfo(addr);
     return {
       type: classifyCocoonContract(info),
       balance: String(info.balance || '0'),
       state: info.status === 'active' ? 'active' : info.status || 'unknown',
       interfaces: info.interfaces || [],
-      isWallet: info.is_wallet || false,
     };
   } catch {
-    return { type: 'unknown', balance: '0', state: 'unknown', interfaces: [], isWallet: false };
+    return { type: 'unknown', balance: '0', state: 'unknown', interfaces: [] };
   }
 }
 
 export async function discoverContracts(rootAddress) {
-  // Try cache first
   const cached = loadCache();
   if (cached) {
-    console.log('Using cached discovery data');
+    console.log('Using cached discovery');
     return cached;
   }
 
@@ -76,52 +69,25 @@ export async function discoverContracts(rootAddress) {
     allTransactions: [],
   };
 
-  // Phase 1: Get root contract info + transactions
+  // Phase 1: Root info + transactions
   const [rootInfo, rootTxs] = await Promise.all([
     getAddressInfo(rootAddress),
     getTransactions(rootAddress, 50),
   ]);
-
   discovered.root.balance = rootInfo.balance;
   discovered.root.state = rootInfo.state;
   discovered.root.lastActivity = rootTxs[0]?.utime || 0;
-  discovered.allTransactions.push(
-    ...rootTxs.map(tx => ({ ...tx, contractRole: 'root' }))
-  );
+  discovered.allTransactions.push(...rootTxs.map(tx => ({ ...tx, contractRole: 'root' })));
 
-  // Phase 2: Extract all addresses from root transactions
-  const allAddresses = new Set();
-  for (const tx of rootTxs) {
-    if (tx.in_msg?.source) allAddresses.add(tx.in_msg.source);
-    for (const outMsg of tx.out_msgs || []) {
-      if (outMsg.destination) allAddresses.add(outMsg.destination);
-    }
-  }
-  allAddresses.delete('');
-  allAddresses.delete(rootAddress);
-
-  // Phase 3: Classify each address via tonapi.io
-  const classified = await Promise.allSettled(
-    [...allAddresses].map(async addr => {
-      const info = await classifyAddress(addr);
-      return { address: addr, ...info };
-    })
-  );
-
-  // Phase 4: BFS crawl — start from cocoon contracts found in root txs
-  const visited = new Set([rootAddress, ...allAddresses]);
+  // Phase 2: Classify seed addresses SEQUENTIALLY (avoid 429)
+  const visited = new Set([rootAddress]);
   const crawlQueue = [];
 
   function addContract(addr, info, parentProxy) {
     const entry = {
-      address: addr,
-      balance: info.balance,
-      state: info.state,
-      type: info.type,
-      interfaces: info.interfaces,
-      lastActivity: 0,
+      address: addr, balance: info.balance, state: info.state,
+      type: info.type, interfaces: info.interfaces, lastActivity: 0,
     };
-
     switch (info.type) {
       case 'proxy':
         if (!discovered.proxies.has(addr)) {
@@ -152,72 +118,79 @@ export async function discoverContracts(rootAddress) {
       case 'cocoon_wallet':
         if (!discovered.cocoonWallets.has(addr)) {
           discovered.cocoonWallets.set(addr, entry);
-          crawlQueue.push(addr); // Crawl from wallets too — they link to proxies
+          crawlQueue.push(addr);
         }
         break;
     }
   }
 
-  // Add contracts found in Phase 3
-  for (const result of classified) {
-    if (result.status !== 'fulfilled') continue;
-    const info = result.value;
+  // Classify seeds sequentially
+  for (const seed of COCOON_SEEDS) {
+    if (visited.has(seed)) continue;
+    visited.add(seed);
+    const info = await classifyAddress(seed);
     if (info.type !== 'unknown' && info.type !== 'wallet' && info.type !== 'jetton') {
-      addContract(info.address, info, null);
+      addContract(seed, info, null);
     }
   }
 
-  // BFS crawl from cocoon contracts
-  let crawlIndex = 0;
-  while (crawlIndex < crawlQueue.length) {
-    const addr = crawlQueue[crawlIndex++];
-    const isCocoonProxy = discovered.proxies.has(addr);
+  // Also check addresses from root transactions sequentially
+  const rootAddrs = new Set();
+  for (const tx of rootTxs) {
+    if (tx.in_msg?.source) rootAddrs.add(tx.in_msg.source);
+    for (const m of tx.out_msgs || []) {
+      if (m.destination) rootAddrs.add(m.destination);
+    }
+  }
+  rootAddrs.delete('');
+  rootAddrs.delete(rootAddress);
+
+  for (const addr of rootAddrs) {
+    if (visited.has(addr)) continue;
+    visited.add(addr);
+    const info = await classifyAddress(addr);
+    if (info.type !== 'unknown' && info.type !== 'wallet' && info.type !== 'jetton') {
+      addContract(addr, info, null);
+    }
+  }
+
+  // Phase 3: BFS crawl from cocoon contracts
+  let idx = 0;
+  while (idx < crawlQueue.length) {
+    const addr = crawlQueue[idx++];
+    const isProxy = discovered.proxies.has(addr);
 
     try {
       const txs = await getTransactions(addr, 25);
-
-      // Update last activity
-      if (discovered.proxies.has(addr)) {
+      if (isProxy) {
         discovered.proxies.get(addr).lastActivity = txs[0]?.utime || 0;
       }
-
       discovered.allTransactions.push(
-        ...txs.map(tx => ({
-          ...tx,
-          contractRole: discovered.proxies.has(addr) ? 'proxy' : 'cocoon_wallet',
-        }))
+        ...txs.map(tx => ({ ...tx, contractRole: isProxy ? 'proxy' : 'cocoon_wallet' }))
       );
 
-      // Find new addresses
+      // Find new addresses from transactions
       const newAddrs = new Set();
       for (const tx of txs) {
-        const src = tx.in_msg?.source;
-        if (src && !visited.has(src)) newAddrs.add(src);
+        if (tx.in_msg?.source && !visited.has(tx.in_msg.source)) newAddrs.add(tx.in_msg.source);
         for (const m of tx.out_msgs || []) {
           if (m.destination && !visited.has(m.destination)) newAddrs.add(m.destination);
         }
       }
 
-      // Classify new addresses (limit batch to avoid rate limits)
-      const batch = [...newAddrs].slice(0, 15);
-      for (const a of batch) visited.add(a);
-
-      const results = await Promise.allSettled(
-        batch.map(async a => {
-          const info = await classifyAddress(a);
-          return { address: a, ...info };
-        })
-      );
-
-      for (const result of results) {
-        if (result.status !== 'fulfilled') continue;
-        const info = result.value;
+      // Classify new addresses SEQUENTIALLY (max 10 per hop)
+      let count = 0;
+      for (const a of newAddrs) {
+        if (count >= 10) break;
+        visited.add(a);
+        const info = await classifyAddress(a);
         if (info.type !== 'unknown' && info.type !== 'wallet' && info.type !== 'jetton') {
-          addContract(info.address, info, isCocoonProxy ? addr : null);
+          addContract(a, info, isProxy ? addr : null);
         }
+        count++;
       }
     } catch (err) {
-      console.warn(`Failed to crawl ${addr}:`, err.message);
+      console.warn(`Crawl failed for ${addr}:`, err.message);
     }
   }
 
@@ -229,53 +202,40 @@ export async function discoverContracts(rootAddress) {
   }
   discovered.allTransactions = [...txMap.values()].sort((a, b) => b.utime - a.utime);
 
-  // Cache results
   saveCache(discovered);
-
   return discovered;
 }
 
 export function aggregateStats(discovered) {
   let totalBalance = parseInt(discovered.root.balance);
-  for (const proxy of discovered.proxies.values()) {
-    totalBalance += parseInt(proxy.balance);
-  }
-  for (const cw of discovered.cocoonWallets.values()) {
-    totalBalance += parseInt(cw.balance);
-  }
+  for (const p of discovered.proxies.values()) totalBalance += parseInt(p.balance);
+  for (const cw of discovered.cocoonWallets.values()) totalBalance += parseInt(cw.balance);
 
-  let totalTonFlow = 0;
-  let totalFees = 0;
+  let totalTonFlow = 0, totalFees = 0;
   const dailyVolume = {};
 
   for (const tx of discovered.allTransactions) {
-    const inValue = parseInt(tx.in_msg?.value || '0');
+    const inVal = parseInt(tx.in_msg?.value || '0');
     const fee = parseInt(tx.fee || '0');
-    totalTonFlow += inValue;
+    totalTonFlow += inVal;
     totalFees += fee;
-
     const day = new Date(tx.utime * 1000).toISOString().slice(0, 10);
     if (!dailyVolume[day]) dailyVolume[day] = { date: day, volume: 0, txCount: 0, fees: 0 };
-    dailyVolume[day].volume += inValue / 1e9;
+    dailyVolume[day].volume += inVal / 1e9;
     dailyVolume[day].txCount += 1;
     dailyVolume[day].fees += fee / 1e9;
   }
 
   const volumeData = Object.values(dailyVolume).sort((a, b) => a.date.localeCompare(b.date));
 
-  let workerPayments = 0;
-  let proxyFees = 0;
+  let workerPayments = 0, proxyFees = 0;
   for (const tx of discovered.allTransactions) {
     if (tx.contractRole === 'proxy' || tx.contractRole === 'cocoon_wallet') {
-      for (const outMsg of tx.out_msgs || []) {
-        const dest = outMsg.destination;
-        const val = parseInt(outMsg.value || '0');
-        if (discovered.workers.has(dest)) {
-          workerPayments += val;
-        } else if (!discovered.proxies.has(dest) && !discovered.cocoonWallets.has(dest)
-                   && dest !== discovered.root.address) {
-          proxyFees += val;
-        }
+      for (const m of tx.out_msgs || []) {
+        const val = parseInt(m.value || '0');
+        if (discovered.workers.has(m.destination)) workerPayments += val;
+        else if (!discovered.proxies.has(m.destination) && !discovered.cocoonWallets.has(m.destination)
+                 && m.destination !== discovered.root.address) proxyFees += val;
       }
     }
   }

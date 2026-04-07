@@ -5,8 +5,20 @@ const client = axios.create({
   timeout: 15_000,
 });
 
+// Simple sequential queue to avoid 429s
+let lastRequest = 0;
+const MIN_DELAY = 200; // ms between requests
+
+async function throttledGet(url) {
+  const now = Date.now();
+  const wait = Math.max(0, MIN_DELAY - (now - lastRequest));
+  if (wait > 0) await new Promise(r => setTimeout(r, wait));
+  lastRequest = Date.now();
+  return client.get(url);
+}
+
 export async function getAccountInfo(address) {
-  const res = await client.get(`/accounts/${address}`);
+  const res = await throttledGet(`/accounts/${address}`);
   return res.data;
 }
 
