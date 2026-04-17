@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+
 import { fetchDiscovery } from '../api/backend';
 import { useLiveFeed } from './useLiveFeed';
 import { DISCOVERY_INTERVAL_MS } from '../constants';
@@ -88,22 +89,31 @@ export function useNetworkData() {
   }, [fallbackPoll, refresh]);
 
   // Tag role on streamed txs that lack it (tonapi stream doesn't know role)
+  // buffer is a stable reference from useLiveFeed's useState initializer — not listed as a dep by design
   useEffect(() => {
     if (!graph) return;
     for (const tx of buffer.items()) {
       if (!tx.contractRole) tagRole(graph, tx);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [version, graph]);
 
   const lastTxUtime = useMemo(() => {
     const items = buffer.items();
     return items[0]?.utime || 0;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [version]);
 
-  const isAlive = useMemo(() => {
-    const nowSec = Date.now() / 1000;
-    return lastTxUtime > 0 && (nowSec - lastTxUtime) < 300;
-  }, [lastTxUtime]);
+  // 5-second tick so isAlive re-evaluates against wall-clock time, not only on new txs
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTick(t => t + 1), 5000);
+    return () => clearInterval(id);
+  }, []);
+
+  // tick is included to signal React that isAlive depends on wall-clock time (not just lastTxUtime)
+  const nowSec = Date.now() / 1000;
+  const isAlive = lastTxUtime > 0 && (nowSec - lastTxUtime) < 300 && tick >= 0;
 
   return {
     graph,
