@@ -20,6 +20,8 @@ jobs:
 
       - name: Build frontend
         run: npm run build
+        env:
+          VITE_TONAPI_TOKEN: ${{ secrets.VITE_TONAPI_TOKEN }}
 
       - name: Create Pages project if needed
         continue-on-error: true

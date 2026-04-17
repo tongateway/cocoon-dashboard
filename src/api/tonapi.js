@@ -49,3 +49,16 @@ export function classifyCocoonContract(accountInfo) {
 
   return 'unknown';
 }
+
+const TONAPI_BASE = 'https://tonapi.io/v2';
+
+export function sseUrl(accounts, token = '') {
+  const csv = accounts.map(a => encodeURIComponent(a)).join(',');
+  const base = `${TONAPI_BASE}/sse/accounts/transactions?accounts=${csv}`;
+  return token ? `${base}&token=${encodeURIComponent(token)}` : base;
+}
+
+export async function fetchTransactionByHash(hash) {
+  const res = await client.get(`/blockchain/transactions/${hash}`);
+  return res.data;
+}

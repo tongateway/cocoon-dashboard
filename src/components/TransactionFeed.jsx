@@ -1,21 +1,14 @@
 import {
   Card, CardBody, CardHeader, Heading,
   Table, Thead, Tbody, Tr, Th, Td,
-  Badge, Text, Box, HStack, Tooltip,
+  Text, Box, HStack, Tooltip,
 } from '@chakra-ui/react';
 import { useMemo } from 'react';
 import AddressCell from './AddressCell';
-import { timeAgo, nanoToTon, classifyTransaction } from '../lib/formatters';
+import { timeAgo, nanoToTon } from '../lib/formatters';
+import { classifyTx, TX_TYPE_LABEL } from '../lib/txClassify';
 import { parseTxOpcode } from '../lib/opcodes';
 
-const TYPE_COLORS = {
-  payment: 'teal',
-  'top-up': 'green',
-  withdrawal: 'orange',
-  deployment: 'purple',
-  bounce: 'red',
-  other: 'gray',
-};
 
 export default function TransactionFeed({ transactions }) {
   const displayTxs = useMemo(() => {
@@ -59,7 +52,6 @@ export default function TransactionFeed({ transactions }) {
               displayTxs.map((tx, i) => {
                 const inValue = parseInt(tx.in_msg?.value || '0');
                 const fee = parseInt(tx.fee || '0');
-                const txType = classifyTransaction(tx);
                 const opcode = parseTxOpcode(tx);
 
                 return (
@@ -77,17 +69,19 @@ export default function TransactionFeed({ transactions }) {
                       </Text>
                     </Td>
                     <Td>
-                      {opcode ? (
-                        <Tooltip label={`${opcode.desc} (${opcode.opcode})`} hasArrow placement="top">
-                          <Badge colorScheme={opcode.color} variant="subtle" fontSize="xs" cursor="help">
-                            {opcode.name}
-                          </Badge>
-                        </Tooltip>
-                      ) : (
-                        <Badge colorScheme={TYPE_COLORS[txType]} variant="subtle" fontSize="xs">
-                          {txType}
-                        </Badge>
-                      )}
+                      {(() => {
+                        const t = classifyTx(tx);
+                        const info = TX_TYPE_LABEL[t];
+                        return (
+                          <Tooltip label={opcode ? `${opcode.desc} (${opcode.opcode})` : info.label} hasArrow placement="top">
+                            <Box as="span" px={2} py={0.5} fontSize="9px" fontWeight="600"
+                                 textTransform="uppercase" letterSpacing="0.04em" borderRadius="3px"
+                                 bg={info.bg} color={info.color} cursor="help">
+                              {info.label}
+                            </Box>
+                          </Tooltip>
+                        );
+                      })()}
                     </Td>
                     <Td isNumeric>
                       <Text fontSize="xs" color="gray.500" fontFamily="mono">
