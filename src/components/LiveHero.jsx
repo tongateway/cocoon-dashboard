@@ -2,7 +2,7 @@ import { Box, Flex, HStack, Text, Grid } from '@chakra-ui/react';
 import Sparkline from './Sparkline';
 import WindowToggle, { WINDOWS } from './WindowToggle';
 import {
-  computeSpend, workerRevenue, commission, tokensProcessed, inWindow,
+  computeSpend, workerRevenue, tokensProcessed, inWindow,
 } from '../lib/rateMath';
 
 function fmtTon(nano) {
@@ -59,12 +59,10 @@ export default function LiveHero({
   const useTotals = windowId === 'all' && computeMetricsTotals;
   const spend = useTotals ? Math.round(computeMetricsTotals.computeSpendTon * 1e9) : computeSpend(windowTxs);
   const rev = useTotals ? Math.round(computeMetricsTotals.workerRevenueTon * 1e9) : workerRevenue(windowTxs);
-  const com = useTotals ? Math.max(0, spend - rev) : commission(windowTxs);
   const tok = useTotals ? (computeMetricsTotals.tokensMix || 0) : tokensProcessed(windowTxs, pricePerToken);
 
   const spendHourly = asHourlyRate(spend, w.ms);
   const revHourly = asHourlyRate(rev, w.ms);
-  const comHourly = asHourlyRate(com, w.ms);
   const tokHourly = asHourlyRate(tok, w.ms);
 
   const sparkSpend = bucketSparkline(last24h, tx =>
@@ -115,11 +113,36 @@ export default function LiveHero({
           sub={spend > 0 ? `${Math.round((rev / spend) * 100)}% of spend` : 'paid to workers'}
           values={sparkRev} color="#58a6ff"
         />
-        <KpiCell
-          label="Network commission" valueMain={fmtTon(comHourly)} unit={windowId === 'all' ? 'TON total' : 'TON/hr'}
-          sub={spend > 0 ? `${Math.round((com / spend) * 100)}% take · proxies+root` : 'proxies + root'}
-          values={sparkSpend.map((v, i) => v - sparkRev[i])} color="#d29922"
-        />
+        {(() => {
+          // Worker/spend ratio = worker revenue / compute spend.
+          // > 100% → network subsidizes workers (workers earn more than clients pay).
+          // < 100% → network takes a cut (commission).
+          const ratioPct = spend > 0 ? (rev / spend) * 100 : null;
+          const isSubsidy = ratioPct !== null && ratioPct > 100;
+          const commissionHourly = Math.max(0, spendHourly - revHourly);
+          const subsidyHourly = Math.max(0, revHourly - spendHourly);
+          const unit = windowId === 'all' ? 'TON total' : 'TON/hr';
+          let label, valueMain, sub, color;
+          if (ratioPct === null) {
+            label = 'Network take-rate'; valueMain = '—'; sub = 'waiting for activity'; color = '#d29922';
+          } else if (isSubsidy) {
+            label = 'Worker subsidy';
+            valueMain = fmtTon(subsidyHourly);
+            sub = `workers earn ${Math.round(ratioPct)}% of client spend`;
+            color = '#a371f7';
+          } else {
+            label = 'Network commission';
+            valueMain = fmtTon(commissionHourly);
+            sub = `${Math.round(100 - ratioPct)}% take · proxies+root`;
+            color = '#d29922';
+          }
+          return (
+            <KpiCell
+              label={label} valueMain={valueMain} unit={ratioPct === null ? '' : unit} sub={sub}
+              values={sparkSpend.map((v, i) => Math.abs(v - sparkRev[i]))} color={color}
+            />
+          );
+        })()}
         <KpiCell
           label="Tokens processed" valueMain={fmtCount(tokHourly)} unit={windowId === 'all' ? ' total' : '/hr'}
           sub="~ price_per_token: 20 nanoTON" values={sparkSpend} color="#a371f7"
