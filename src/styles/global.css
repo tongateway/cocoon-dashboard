@@ -1,61 +1,63 @@
 /* ============================================================
-   Cocoon Network — Design System
-   Editorial Bioluminescent Terminal
+   Cocoon Network — dev-tool design system (Linear × Supabase × Vercel)
+   Clean, compact, information-dense.
    ============================================================ */
 
 :root {
-  /* Surfaces — warm near-black with a faintly greenish undertone (cocoon/silk) */
-  --bg-void:      #07080a;
-  --bg-base:      #0a0b0e;
-  --bg-raised:   rgba(255, 245, 228, 0.02);
-  --bg-sunken:   rgba(0, 0, 0, 0.35);
+  /* Surfaces */
+  --bg:           #09090b;
+  --bg-elev-1:    #0e0e10;
+  --bg-elev-2:    #131315;
+  --bg-hover:     rgba(255, 255, 255, 0.03);
 
-  /* Hairlines — thin, organic, barely-there */
-  --line-faint:  rgba(255, 245, 228, 0.06);
-  --line:        rgba(255, 245, 228, 0.10);
-  --line-strong: rgba(255, 245, 228, 0.18);
+  /* Borders */
+  --line-faint:   rgba(255, 255, 255, 0.06);
+  --line:         rgba(255, 255, 255, 0.09);
+  --line-strong:  rgba(255, 255, 255, 0.14);
 
-  /* Ink — warm off-whites for text */
-  --ink-high:    #f4efe4;  /* primary text */
-  --ink-mid:     #b3ac9e;  /* secondary */
-  --ink-low:     #6f6a5f;  /* tertiary / captions */
-  --ink-faint:   #494539;  /* labels, disabled */
+  /* Text */
+  --fg:           #fafafa;
+  --fg-mid:       #a1a1a6;
+  --fg-dim:       #71717a;
+  --fg-faint:     #52525b;
 
-  /* Signature: bioluminescent honey amber */
-  --honey:       #e8c674;
-  --honey-lo:    #c09a4d;
-  --honey-glow:  rgba(232, 198, 116, 0.45);
-  --honey-wash:  rgba(232, 198, 116, 0.08);
+  /* Accent — subtle emerald (developer green, not neon) */
+  --accent:       #22c55e;
+  --accent-dim:   #16a34a;
+  --accent-wash:  rgba(34, 197, 94, 0.08);
+  --accent-line:  rgba(34, 197, 94, 0.25);
 
-  /* Supporting tones */
-  --mint:        #82d5a7;   /* healthy / live */
-  --mint-glow:   rgba(130, 213, 167, 0.5);
-  --coral:       #f58b7c;   /* danger / attention */
-  --dusk:        #8ab0d1;   /* info / links */
-  --plum:        #c88bc4;   /* tokens / accent */
+  /* Semantic */
+  --ok:           #22c55e;
+  --warn:         #f59e0b;
+  --warn-wash:    rgba(245, 158, 11, 0.08);
+  --err:          #f43f5e;
+  --err-wash:     rgba(244, 63, 94, 0.08);
+  --info:         #60a5fa;
+  --violet:       #a78bfa;
 
-  /* Type scales */
-  --ff-display: 'Fraunces', 'Cormorant Garamond', Georgia, serif;
-  --ff-body:    'Geist', 'Helvetica Neue', -apple-system, 'Segoe UI', sans-serif;
-  --ff-mono:    'JetBrains Mono', 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+  /* Type */
+  --ff-sans:  'Geist', -apple-system, 'Segoe UI', 'Helvetica Neue', sans-serif;
+  --ff-mono:  'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
 
   /* Motion */
-  --ease-soft:  cubic-bezier(.22, .61, .36, 1);
-  --ease-snap:  cubic-bezier(.2, .8, .2, 1);
-}
+  --ease:  cubic-bezier(.22, .61, .36, 1);
 
-/* ============================================================
-   Base
-   ============================================================ */
+  /* Radii & sizes */
+  --radius:     6px;
+  --radius-sm:  4px;
+  --radius-lg:  10px;
+}
 
 * { box-sizing: border-box; }
 
 html, body {
-  background: var(--bg-base);
-  color: var(--ink-high);
-  font-family: var(--ff-body);
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--ff-sans);
+  font-size: 14px;
   font-weight: 400;
-  font-feature-settings: "ss01", "cv11", "kern", "calt";
+  line-height: 1.5;
   letter-spacing: -0.005em;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -63,162 +65,49 @@ html, body {
 }
 
 body {
-  position: relative;
   min-height: 100vh;
   overflow-x: hidden;
 }
 
-/* Ambient warm radial wash — breathing, barely visible */
-body::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 0;
-  background:
-    radial-gradient(ellipse 80% 60% at 50% -10%, rgba(232, 198, 116, 0.06), transparent 60%),
-    radial-gradient(ellipse 60% 80% at 10% 100%, rgba(130, 213, 167, 0.03), transparent 60%),
-    radial-gradient(ellipse 60% 80% at 100% 100%, rgba(232, 198, 116, 0.02), transparent 60%);
-}
-
-/* Grain overlay via SVG turbulence — subtle texture */
-body::after {
-  content: '';
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 0;
-  opacity: 0.4;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1 0 0 0 0 0.96 0 0 0 0 0.9 0 0 0 0.035 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
-  mix-blend-mode: overlay;
-}
-
 #root {
-  position: relative;
-  z-index: 1;
   min-height: 100vh;
 }
 
-/* ============================================================
-   Typography defaults
-   ============================================================ */
+/* Utility — hairline rule */
+.hr { height: 1px; background: var(--line-faint); width: 100%; }
 
-.display {
-  font-family: var(--ff-display);
-  font-variation-settings: "opsz" 96, "SOFT" 30;
-  font-weight: 400;
-  letter-spacing: -0.02em;
-  line-height: 0.96;
-}
-.display-italic {
-  font-family: var(--ff-display);
-  font-style: italic;
-  font-variation-settings: "opsz" 144, "SOFT" 80;
-}
-
-.num {
-  font-family: var(--ff-display);
-  font-variation-settings: "opsz" 144, "SOFT" 0;
-  font-feature-settings: "tnum" 1, "lnum" 1;
-  font-weight: 400;
-}
-
-.mono {
-  font-family: var(--ff-mono);
-  font-feature-settings: "tnum" 1;
-  letter-spacing: -0.01em;
-}
-
-.label {
-  font-family: var(--ff-body);
-  font-size: 10px;
-  font-weight: 500;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--ink-low);
-}
-
-.eyebrow {
-  font-family: var(--ff-display);
-  font-style: italic;
-  font-weight: 400;
-  font-variation-settings: "opsz" 14, "SOFT" 60;
-  color: var(--ink-mid);
-  font-size: 13px;
-  letter-spacing: 0.01em;
-}
-
-/* ============================================================
-   Live / glow animations
-   ============================================================ */
-
-@keyframes pulse-halo {
-  0%   { box-shadow: 0 0 0 0 var(--mint-glow), 0 0 14px 0 rgba(130, 213, 167, 0.5); }
-  70%  { box-shadow: 0 0 0 14px rgba(130, 213, 167, 0), 0 0 14px 0 rgba(130, 213, 167, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(130, 213, 167, 0), 0 0 14px 0 rgba(130, 213, 167, 0); }
-}
-
-@keyframes pulse-halo-amber {
-  0%   { box-shadow: 0 0 0 0 var(--honey-glow), 0 0 14px 0 var(--honey-glow); }
-  70%  { box-shadow: 0 0 0 14px rgba(232, 198, 116, 0), 0 0 14px 0 rgba(232, 198, 116, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(232, 198, 116, 0), 0 0 14px 0 rgba(232, 198, 116, 0); }
-}
-
-@keyframes fade-up {
-  from { opacity: 0; transform: translateY(8px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes draw-in {
-  from { stroke-dashoffset: var(--dash, 1000); opacity: 0; }
-  to   { stroke-dashoffset: 0; opacity: 1; }
-}
-
-.fade-up    { animation: fade-up .7s var(--ease-soft) both; }
-.fade-up-1  { animation: fade-up .7s var(--ease-soft) .05s both; }
-.fade-up-2  { animation: fade-up .7s var(--ease-soft) .12s both; }
-.fade-up-3  { animation: fade-up .7s var(--ease-soft) .22s both; }
-.fade-up-4  { animation: fade-up .7s var(--ease-soft) .34s both; }
-.fade-up-5  { animation: fade-up .7s var(--ease-soft) .48s both; }
-
-/* ============================================================
-   Scrollbar — thin, warm
-   ============================================================ */
-
-::-webkit-scrollbar { width: 8px; height: 8px; }
+/* Scrollbar */
+::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
   background: var(--line);
-  border-radius: 4px;
+  border-radius: 5px;
+  border: 2px solid var(--bg);
 }
 ::-webkit-scrollbar-thumb:hover { background: var(--line-strong); }
 
-/* ============================================================
-   Selection
-   ============================================================ */
+/* Selection */
+::selection { background: var(--accent); color: #fff; }
 
-::selection {
-  background: var(--honey);
-  color: var(--bg-void);
+/* Focus ring helper */
+.focus-ring:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
-/* ============================================================
-   Form element resets
-   ============================================================ */
+/* Animations */
+@keyframes pulse-dot {
+  0%   { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.5); }
+  70%  { box-shadow: 0 0 0 6px rgba(34, 197, 94, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.fade-in { animation: fade-in .25s var(--ease) both; }
 
 button { font-family: inherit; }
-input  { font-family: inherit; }
-
-/* Hairline rule — used for section dividers */
-.rule {
-  height: 1px;
-  background: var(--line-faint);
-  width: 100%;
-}
-.rule-double {
-  height: 3px;
-  background: linear-gradient(to bottom,
-    var(--line-faint) 0, var(--line-faint) 1px,
-    transparent 1px, transparent 2px,
-    var(--line-faint) 2px, var(--line-faint) 3px);
-}
+input { font-family: inherit; }

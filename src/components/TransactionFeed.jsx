@@ -9,43 +9,33 @@ import { classifyTx } from '../lib/txClassify';
 import { parseTxOpcode } from '../lib/opcodes';
 
 const TX_TONES = {
-  worker_payout: { label: 'Payout',  color: 'var(--mint)'  },
-  client_charge: { label: 'Charge',  color: 'var(--dusk)'  },
-  top_up:        { label: 'Top-up',  color: 'var(--honey)' },
-  proxy_fee:     { label: 'Fee',     color: 'var(--ink-mid)' },
-  other:         { label: '—',       color: 'var(--ink-low)' },
+  worker_payout: { label: 'payout', color: 'var(--info)'   },
+  client_charge: { label: 'charge', color: 'var(--accent)' },
+  top_up:        { label: 'top-up', color: 'var(--warn)'   },
+  proxy_fee:     { label: 'fee',    color: 'var(--fg-dim)' },
+  other:         { label: '—',      color: 'var(--fg-faint)' },
 };
 
 export default function TransactionFeed({ transactions }) {
   const displayTxs = useMemo(() => (transactions || []).slice(0, 80), [transactions]);
 
   return (
-    <Box className="fade-up">
-      <HStack justify="space-between" align="baseline" mb={4} flexWrap="wrap" gap={3}>
-        <HStack spacing={4} align="baseline">
-          <Text fontSize="11px" fontFamily="var(--ff-mono)" letterSpacing="0.24em" textTransform="uppercase" color="var(--ink-low)">
-            § VII · Ledger
-          </Text>
-          <Text fontFamily="var(--ff-display)" fontStyle="italic" fontSize="16px" color="var(--ink-mid)"
-                sx={{ fontVariationSettings: '"opsz" 18, "SOFT" 80' }}>
-            the most recent on-chain entries
+    <Box bg="var(--bg-elev-1)" border="1px solid var(--line-faint)" borderRadius="var(--radius)" className="fade-in">
+      <HStack justify="space-between" align="center" px={4} py={3} borderBottom="1px solid var(--line-faint)">
+        <HStack spacing={2}>
+          <Text fontSize="13px" fontWeight="600" color="var(--fg)">Transactions</Text>
+          <Text fontSize="11px" color="var(--fg-dim)" fontFamily="var(--ff-mono)">
+            {displayTxs.length}
           </Text>
         </HStack>
-        <HStack spacing={2}>
-          <Box w="6px" h="6px" borderRadius="50%" bg="var(--mint)"
-               sx={{ animation: 'pulse-halo 2.4s infinite var(--ease-soft)' }} />
-          <Text fontSize="10px" fontFamily="var(--ff-mono)" letterSpacing="0.18em" textTransform="uppercase"
-                color="var(--ink-low)">
-            {displayTxs.length} entries
-          </Text>
+        <HStack spacing={1.5}>
+          <Box w="6px" h="6px" borderRadius="50%" bg="var(--accent)"
+               sx={{ animation: 'pulse-dot 2s infinite' }} />
+          <Text fontSize="10px" color="var(--fg-dim)" fontFamily="var(--ff-mono)">live</Text>
         </HStack>
       </HStack>
 
-      <Box
-        borderTop="1px solid var(--line-faint)"
-        borderBottom="1px solid var(--line-faint)"
-        overflowX="auto"
-      >
+      <Box overflowX="auto">
         <Table size="sm" variant="unstyled" sx={{ borderCollapse: 'separate', borderSpacing: 0 }}>
           <Thead>
             <Tr>
@@ -53,18 +43,15 @@ export default function TransactionFeed({ transactions }) {
               <HeaderCell>Type</HeaderCell>
               <HeaderCell>From</HeaderCell>
               <HeaderCell>To</HeaderCell>
-              <HeaderCell right>Amount</HeaderCell>
+              <HeaderCell right>Value</HeaderCell>
               <HeaderCell right>Fee</HeaderCell>
             </Tr>
           </Thead>
           <Tbody>
             {displayTxs.length === 0 ? (
               <Tr>
-                <Td colSpan={6} textAlign="center" py={8} border="none">
-                  <Text fontFamily="var(--ff-display)" fontStyle="italic" fontSize="14px" color="var(--ink-low)"
-                        sx={{ fontVariationSettings: '"opsz" 16, "SOFT" 80' }}>
-                    awaiting transactions…
-                  </Text>
+                <Td colSpan={6} textAlign="center" py={6}>
+                  <Text fontSize="12px" color="var(--fg-dim)">awaiting transactions…</Text>
                 </Td>
               </Tr>
             ) : (
@@ -78,57 +65,48 @@ export default function TransactionFeed({ transactions }) {
                 return (
                   <Tr
                     key={tx.transaction_id.lt + '-' + i}
-                    _hover={{ bg: 'rgba(255, 245, 228, 0.02)' }}
-                    sx={{ transition: 'background 120ms var(--ease-soft)' }}
+                    _hover={{ bg: 'var(--bg-hover)' }}
+                    sx={{ transition: 'background 100ms var(--ease)' }}
                   >
                     <BodyCell>
-                      <Text fontFamily="var(--ff-mono)" fontSize="12px" color="var(--ink-low)" whiteSpace="nowrap">
+                      <Text fontFamily="var(--ff-mono)" fontSize="11.5px" color="var(--fg-dim)" whiteSpace="nowrap">
                         {timeAgo(tx.utime)}
                       </Text>
                     </BodyCell>
                     <BodyCell>
                       <Tooltip
                         label={opcode ? `${opcode.desc} (${opcode.opcode})` : tone.label}
-                        hasArrow
-                        placement="top"
-                        bg="var(--bg-void)"
-                        color="var(--ink-high)"
-                        borderColor="var(--line)"
-                        borderWidth="1px"
+                        hasArrow placement="top"
+                        bg="var(--bg-elev-2)" color="var(--fg)"
+                        borderColor="var(--line)" borderWidth="1px" fontSize="11px"
                       >
-                        <Box
-                          as="span"
-                          px={2}
-                          py="2px"
-                          fontSize="9.5px"
+                        <Text
+                          fontSize="10.5px"
                           fontFamily="var(--ff-mono)"
-                          fontWeight="500"
-                          textTransform="uppercase"
-                          letterSpacing="0.12em"
                           color={tone.color}
-                          border={`1px solid ${tone.color}`}
-                          borderRadius="1px"
+                          fontWeight="500"
                           cursor="help"
+                          letterSpacing="0.02em"
                         >
                           {tone.label}
-                        </Box>
+                        </Text>
                       </Tooltip>
                     </BodyCell>
                     <BodyCell><AddressCell address={tx.in_msg?.source} /></BodyCell>
                     <BodyCell><AddressCell address={tx.in_msg?.destination || tx.address?.account_address} /></BodyCell>
                     <BodyCell right>
                       <Text
-                        fontFamily="var(--ff-display)"
-                        fontSize="16px"
-                        color={inValue > 0 ? 'var(--mint)' : 'var(--ink-faint)'}
-                        fontWeight="400"
-                        sx={{ fontVariationSettings: '"opsz" 20, "SOFT" 30', fontVariantNumeric: 'tabular-nums' }}
+                        fontFamily="var(--ff-mono)"
+                        fontSize="12.5px"
+                        color={inValue > 0 ? 'var(--accent)' : 'var(--fg-faint)'}
+                        fontWeight="500"
+                        sx={{ fontVariantNumeric: 'tabular-nums' }}
                       >
                         {inValue > 0 ? `+${nanoToTon(inValue).toFixed(4)}` : '0'}
                       </Text>
                     </BodyCell>
                     <BodyCell right>
-                      <Text fontFamily="var(--ff-mono)" fontSize="11px" color="var(--ink-faint)">
+                      <Text fontFamily="var(--ff-mono)" fontSize="11px" color="var(--fg-faint)">
                         {nanoToTon(fee).toFixed(4)}
                       </Text>
                     </BodyCell>
@@ -146,16 +124,15 @@ export default function TransactionFeed({ transactions }) {
 function HeaderCell({ children, right }) {
   return (
     <Th
-      py={3}
+      py={2.5}
       px={4}
       borderBottom="1px solid var(--line-faint)"
-      fontSize="10px"
-      fontFamily="var(--ff-body)"
+      fontSize="10.5px"
       fontWeight="500"
-      letterSpacing="0.22em"
-      textTransform="uppercase"
-      color="var(--ink-faint)"
+      color="var(--fg-faint)"
       textAlign={right ? 'right' : 'left'}
+      textTransform="none"
+      letterSpacing="normal"
     >
       {children}
     </Th>
@@ -165,7 +142,7 @@ function HeaderCell({ children, right }) {
 function BodyCell({ children, right }) {
   return (
     <Td
-      py={3}
+      py={2.5}
       px={4}
       borderBottom="1px solid var(--line-faint)"
       textAlign={right ? 'right' : 'left'}

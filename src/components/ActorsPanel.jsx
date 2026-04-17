@@ -1,16 +1,15 @@
 import { Box, Grid, Text, HStack, VStack } from '@chakra-ui/react';
 import { activeWorkers, activeClients, inWindow } from '../lib/rateMath';
-import { classifyTx, TX_TYPE_LABEL } from '../lib/txClassify';
+import { classifyTx } from '../lib/txClassify';
 
-const ACTIVE_MS = 60 * 60 * 1000; // fixed 1h per spec
+const ACTIVE_MS = 60 * 60 * 1000;
 
-// Updated palette for the badges — tone-matched to the new design system
 const TX_TONES = {
-  worker_payout: { label: 'Payout',  color: 'var(--mint)'  },
-  client_charge: { label: 'Charge',  color: 'var(--dusk)'  },
-  top_up:        { label: 'Top-up',  color: 'var(--honey)' },
-  proxy_fee:     { label: 'Fee',     color: 'var(--ink-mid)' },
-  other:         { label: '—',       color: 'var(--ink-low)' },
+  worker_payout: { label: 'PAYOUT', color: 'var(--info)'   },
+  client_charge: { label: 'CHARGE', color: 'var(--accent)' },
+  top_up:        { label: 'TOP-UP', color: 'var(--warn)'   },
+  proxy_fee:     { label: 'FEE',    color: 'var(--fg-dim)' },
+  other:         { label: '—',      color: 'var(--fg-faint)' },
 };
 
 function short(addr) {
@@ -45,89 +44,55 @@ export default function ActorsPanel({ graph, bufferRef, bufferVersion }) {
     .slice(0, 12);
 
   return (
-    <Box className="fade-up-5">
-      <HStack spacing={4} align="baseline" flexWrap="wrap" mb={5}>
-        <Text fontSize="11px" fontFamily="var(--ff-mono)" letterSpacing="0.24em" textTransform="uppercase" color="var(--ink-low)">
-          § V · Roll call
-        </Text>
-        <Text fontFamily="var(--ff-display)" fontStyle="italic" fontSize="16px" color="var(--ink-mid)"
-              sx={{ fontVariationSettings: '"opsz" 18, "SOFT" 80' }}>
-          who's active in the last hour · and what's happening now
-        </Text>
-      </HStack>
+    <Grid templateColumns={{ base: '1fr', lg: '1fr 1fr 1.4fr' }} gap={3} className="fade-in">
+      <ActorCard n={activeW} total={totalWorkers} label="Workers earning (1h)" tone="var(--info)"
+                 detail={`${Math.max(0, totalWorkers - activeW)} idle`} />
+      <ActorCard n={activeC} total={totalClients} label="Clients spending (1h)" tone="var(--accent)"
+                 detail={`${Math.max(0, totalClients - activeC)} idle`} />
 
-      <Grid templateColumns={{ base: '1fr', lg: '1fr 1fr 1.6fr' }} gap={0}
-            borderTop="1px solid var(--line-faint)"
-            borderBottom="1px solid var(--line-faint)"
-            sx={{
-              '& > div': { borderRight: { base: 'none', lg: '1px solid var(--line-faint)' } },
-              '& > div:last-child': { borderRight: 'none' },
-              '& > div:not(:first-of-type)': { borderTop: { base: '1px solid var(--line-faint)', lg: 'none' } },
-            }}>
-        <ActorBox
-          n={activeW}
-          total={totalWorkers}
-          label="Workers earning"
-          tone="var(--mint)"
-          detail={`${activeW} received payouts · ${Math.max(0, totalWorkers - activeW)} idle`}
-        />
-        <ActorBox
-          n={activeC}
-          total={totalClients}
-          label="Clients spending"
-          tone="var(--dusk)"
-          detail={`${activeC} charged inference · ${Math.max(0, totalClients - activeC)} idle`}
-        />
+      <Box bg="var(--bg-elev-1)" border="1px solid var(--line-faint)" borderRadius="var(--radius)" p={4}>
+        <HStack justify="space-between" mb={3}>
+          <Text fontSize="13px" fontWeight="600" color="var(--fg)">Event feed</Text>
+          <HStack spacing={1.5}>
+            <Box w="6px" h="6px" borderRadius="50%" bg="var(--accent)"
+                 sx={{ animation: 'pulse-dot 2s infinite' }} />
+            <Text fontSize="10px" color="var(--fg-dim)" fontFamily="var(--ff-mono)">live</Text>
+          </HStack>
+        </HStack>
 
-        <Box p={{ base: 5, md: 6 }}>
-          <Text fontSize="10px" fontFamily="var(--ff-body)" letterSpacing="0.22em" textTransform="uppercase"
-                color="var(--ink-low)" fontWeight="500" mb={3}>
-            Live event feed
-          </Text>
-          <VStack spacing={0} align="stretch">
-            {feed.length === 0 && (
-              <Text fontSize="13px" color="var(--ink-low)" fontFamily="var(--ff-display)" fontStyle="italic"
-                    sx={{ fontVariationSettings: '"opsz" 14, "SOFT" 80' }}>
-                awaiting transactions…
-              </Text>
-            )}
-            {feed.map((tx) => {
+        {feed.length === 0 ? (
+          <Text fontSize="12px" color="var(--fg-dim)">awaiting transactions…</Text>
+        ) : (
+          <VStack spacing={0} align="stretch" maxH="220px" overflowY="auto">
+            {feed.map(tx => {
               const tone = TX_TONES[tx._type] || TX_TONES.other;
-              const info = TX_TYPE_LABEL[tx._type];
               return (
                 <HStack
                   key={tx.id}
                   justify="space-between"
                   py={1.5}
                   borderBottom="1px solid var(--line-faint)"
-                  fontFamily="var(--ff-mono)"
                   fontSize="11.5px"
                   spacing={3}
+                  fontFamily="var(--ff-mono)"
                   _last={{ borderBottom: 'none' }}
                 >
-                  <Text color="var(--ink-faint)" w="42px" flexShrink={0}>
+                  <Text color="var(--fg-faint)" w="36px" flexShrink={0}>
                     {ago(tx.utime)}
                   </Text>
-                  <HStack flex={1} spacing={3} overflow="hidden">
-                    <Box
-                      as="span"
-                      fontSize="9px"
-                      px={1.5}
-                      borderRadius="1px"
-                      border={`1px solid ${tone.color}`}
-                      color={tone.color}
-                      textTransform="uppercase"
-                      letterSpacing="0.12em"
-                      fontWeight="500"
-                      flexShrink={0}
-                      title={info?.label || tx._type}
-                    >
-                      {tone.label}
-                    </Box>
-                    <Text color="var(--ink-mid)" isTruncated>
-                      {short(tx.address?.account_address)}
-                    </Text>
-                  </HStack>
+                  <Text
+                    fontSize="9.5px"
+                    letterSpacing="0.06em"
+                    fontWeight="500"
+                    color={tone.color}
+                    w="56px"
+                    flexShrink={0}
+                  >
+                    {tone.label}
+                  </Text>
+                  <Text color="var(--fg-mid)" flex={1} isTruncated>
+                    {short(tx.address?.account_address)}
+                  </Text>
                   <Text color={tone.color} fontWeight="500" flexShrink={0}>
                     +{fmtVal(tx.in_msg?.value)}
                   </Text>
@@ -135,67 +100,44 @@ export default function ActorsPanel({ graph, bufferRef, bufferVersion }) {
               );
             })}
           </VStack>
-        </Box>
-      </Grid>
-    </Box>
+        )}
+      </Box>
+    </Grid>
   );
 }
 
-function ActorBox({ n, total, label, detail, tone }) {
+function ActorCard({ n, total, label, detail, tone }) {
   const pct = total > 0 ? (n / total) * 100 : 0;
   return (
-    <Box p={{ base: 5, md: 6 }}>
-      <Text fontSize="10px" fontFamily="var(--ff-body)" letterSpacing="0.22em" textTransform="uppercase"
-            color="var(--ink-low)" fontWeight="500" mb={3}>
+    <Box
+      bg="var(--bg-elev-1)"
+      border="1px solid var(--line-faint)"
+      borderRadius="var(--radius)"
+      p={4}
+      _hover={{ borderColor: 'var(--line)' }}
+      sx={{ transition: 'border-color 150ms var(--ease)' }}
+    >
+      <Text fontSize="11px" color="var(--fg-dim)" fontWeight="500" mb={3}>
         {label}
       </Text>
 
-      <HStack align="baseline" spacing={2}>
-        <Text
-          fontFamily="var(--ff-display)"
-          fontSize={{ base: '54px', md: '72px' }}
-          color={tone}
-          fontWeight="300"
-          sx={{
-            fontVariationSettings: '"opsz" 144, "SOFT" 10',
-            letterSpacing: '-0.04em',
-            lineHeight: 0.9,
-          }}
-        >
+      <HStack align="baseline" spacing={1.5} mb={2}>
+        <Text fontSize="28px" fontWeight="500" color={tone} lineHeight="1"
+              sx={{ letterSpacing: '-0.03em', fontVariantNumeric: 'tabular-nums' }}>
           {n}
         </Text>
-        <Text
-          fontFamily="var(--ff-display)"
-          fontStyle="italic"
-          fontSize="22px"
-          color="var(--ink-mid)"
-          sx={{ fontVariationSettings: '"opsz" 48, "SOFT" 100' }}
-        >
-          ⁄ {total}
+        <Text fontSize="14px" color="var(--fg-faint)" fontFamily="var(--ff-mono)">
+          / {total}
         </Text>
       </HStack>
 
-      <Text
-        fontFamily="var(--ff-display)"
-        fontStyle="italic"
-        fontSize="13px"
-        color="var(--ink-mid)"
-        sx={{ fontVariationSettings: '"opsz" 14, "SOFT" 80' }}
-        mt={2}
-      >
+      <Text fontSize="11px" color="var(--fg-faint)" mb={3}>
         {detail}
       </Text>
 
-      {/* Progress line */}
-      <Box h="1px" bg="var(--line-faint)" mt={4} overflow="hidden" position="relative">
-        <Box
-          position="absolute"
-          inset={0}
-          w={`${pct}%`}
-          bg={tone}
-          sx={{ transition: 'width 600ms var(--ease-soft)' }}
-          opacity={0.8}
-        />
+      <Box h="2px" bg="var(--line-faint)" borderRadius="1px" overflow="hidden">
+        <Box h="100%" w={`${pct}%`} bg={tone}
+             sx={{ transition: 'width 600ms var(--ease)' }} />
       </Box>
     </Box>
   );
