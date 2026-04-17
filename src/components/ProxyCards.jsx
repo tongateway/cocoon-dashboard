@@ -6,11 +6,13 @@ import {
 import AddressCell from './AddressCell';
 import { nanoToTon, timeAgo } from '../lib/formatters';
 
+const byBalanceDesc = (a, b) => parseInt(b?.balance || '0', 10) - parseInt(a?.balance || '0', 10);
+
 export default function ProxyCards({ rootConfig, proxies, clients, workers, cocoonWallets }) {
-  const proxyList = proxies ? [...proxies.values()] : [];
-  const clientList = clients ? [...clients.values()] : [];
-  const workerList = workers ? [...workers.values()] : [];
-  const walletList = cocoonWallets ? [...cocoonWallets.values()] : [];
+  const proxyList = proxies ? [...proxies.values()].sort(byBalanceDesc) : [];
+  const clientList = clients ? [...clients.values()].sort(byBalanceDesc) : [];
+  const workerList = workers ? [...workers.values()].sort(byBalanceDesc) : [];
+  const walletList = cocoonWallets ? [...cocoonWallets.values()].sort(byBalanceDesc) : [];
 
   return (
     <Card>
