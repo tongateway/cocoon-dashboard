@@ -72,7 +72,7 @@ export function useNetworkData() {
 
   const accounts = useMemo(() => {
     if (!graph) return [];
-    return [graph.root.address, ...graph.proxies.keys()];
+    return [graph.root?.address, ...graph.proxies.keys()].filter(Boolean);
   }, [graph]);
 
   const { buffer, version, connected } = useLiveFeed({
@@ -97,6 +97,10 @@ export function useNetworkData() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [version, graph]);
+
+  useEffect(() => {
+    if (connected) setFallbackPoll(false);
+  }, [connected]);
 
   const lastTxUtime = useMemo(() => {
     const items = buffer.items();

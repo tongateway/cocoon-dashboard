@@ -59,7 +59,7 @@ export function useLiveFeed({ accounts, seed = [], onFallback }) {
 
     const connect = () => {
       if (cancelled) return;
-      const url = sseUrl(accounts);
+      const url = sseUrl(accounts, import.meta.env.VITE_TONAPI_TOKEN || '');
       es = new EventSource(url);
 
       es.addEventListener('message', async (evt) => {

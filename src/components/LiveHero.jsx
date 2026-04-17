@@ -104,21 +104,21 @@ export default function LiveHero({
 
       <Grid templateColumns={{ base: '1fr 1fr', lg: 'repeat(4, 1fr)' }} gap={3}>
         <KpiCell
-          label="Compute spend" valueMain={fmtTon(spendHourly * 1e9)} unit="TON/hr"
+          label="Compute spend" valueMain={fmtTon(spendHourly)} unit={windowId === 'all' ? 'TON total' : 'TON/hr'}
           sub="paid by clients" accent values={sparkSpend} color="#3fb950"
         />
         <KpiCell
-          label="Worker revenue" valueMain={fmtTon(revHourly * 1e9)} unit="TON/hr"
+          label="Worker revenue" valueMain={fmtTon(revHourly)} unit={windowId === 'all' ? 'TON total' : 'TON/hr'}
           sub={spend > 0 ? `${Math.round((rev / spend) * 100)}% of spend` : 'paid to workers'}
           values={sparkRev} color="#58a6ff"
         />
         <KpiCell
-          label="Network commission" valueMain={fmtTon(comHourly * 1e9)} unit="TON/hr"
+          label="Network commission" valueMain={fmtTon(comHourly)} unit={windowId === 'all' ? 'TON total' : 'TON/hr'}
           sub={spend > 0 ? `${Math.round((com / spend) * 100)}% take · proxies+root` : 'proxies + root'}
           values={sparkSpend.map((v, i) => v - sparkRev[i])} color="#d29922"
         />
         <KpiCell
-          label="Tokens processed" valueMain={fmtCount(tokHourly)} unit="/hr"
+          label="Tokens processed" valueMain={fmtCount(tokHourly)} unit={windowId === 'all' ? ' total' : '/hr'}
           sub="~ price_per_token: 20 nanoTON" values={sparkSpend} color="#a371f7"
         />
       </Grid>
