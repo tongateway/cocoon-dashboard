@@ -11,10 +11,10 @@ export async function runDiscovery(tc, kv, rootContract) {
   console.log('[discover] start');
   const result = { root: {}, proxies: [], clients: [], workers: [], cocoonWallets: [], relatedWallets: [], transactions: [] };
 
-  // 1. Root info + all txs
+  // 1. Root info + all txs (8 pages ≈ 400 recent txs for opcode routing)
   const rootInfo = await tc.getAddressInfo(rootContract);
   const rootType = await classifyByCode(rootInfo.code);
-  const rootTxs = await tc.getAllTxs(rootContract, 3);
+  const rootTxs = await tc.getAllTxs(rootContract, 8);
 
   result.root = {
     address: rootContract, balance: rootInfo.balance, state: rootInfo.state, type: rootType,
@@ -69,12 +69,12 @@ export async function runDiscovery(tc, kv, rootContract) {
 
   console.log(`[discover] after 2-hop: ${result.proxies.length}P ${result.clients.length}C ${result.workers.length}W`);
 
-  // 4. BFS crawl from cocoon contracts
+  // 4. BFS crawl from cocoon contracts (5 pages ≈ 250 txs per contract for deeper history)
   let idx = 0, classified = 0;
   while (idx < cocoonQueue.length && classified < MAX_CLASSIFY_PER_RUN) {
     const { address: addr, type } = cocoonQueue[idx++];
     try {
-      const txs = await tc.getAllTxs(addr, 2);
+      const txs = await tc.getAllTxs(addr, 5);
       const entry = findEntry(result, addr);
       if (entry) entry.lastActivity = txs[0]?.utime || 0;
       result.transactions.push(...txs.map(tx => ({ ...tx, contractRole: type })));
@@ -141,7 +141,7 @@ export async function runDiscovery(tc, kv, rootContract) {
     if (hasTxs) continue;
 
     try {
-      const txs = await tc.getAllTxs(contract.address, 2);
+      const txs = await tc.getAllTxs(contract.address, 5);
       contract.lastActivity = txs[0]?.utime || 0;
       result.transactions.push(...txs.map(tx => ({ ...tx, contractRole: contract.type })));
     } catch {}
