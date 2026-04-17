@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeSpend, workerRevenue, commission, tokensProcessed } from './rateMath';
+import { computeSpend, workerRevenue, commission, tokensProcessed, activeWorkers, activeClients, inWindow } from './rateMath';
 
 function tx({ role, opName, inValue = 0 }) {
   return {
@@ -74,5 +74,46 @@ describe('tokensProcessed', () => {
   it('uses default 20 nanoTON if pricePerToken missing', () => {
     const txs = [tx({ role: 'cocoon_proxy', opName: 'client_proxy_request', inValue: 200 })];
     expect(tokensProcessed(txs)).toBe(10);
+  });
+});
+
+describe('inWindow', () => {
+  it('filters txs within N ms of now', () => {
+    const now = 1_700_000_000;
+    const txs = [
+      { utime: now - 10 },       // 10s ago — include
+      { utime: now - 3700 },     // 61min ago — exclude for 1h window
+      { utime: now - 60 * 60 + 5 }, // 59m55s ago — include for 1h
+    ];
+    const r = inWindow(txs, 60 * 60 * 1000, now * 1000);
+    expect(r.map(t => t.utime)).toEqual([now - 10, now - 60 * 60 + 5]);
+  });
+});
+
+describe('activeWorkers', () => {
+  it('counts unique worker addresses with ext_worker_payout_signed', () => {
+    const txs = [
+      { contractRole: 'cocoon_worker', _op: 'ext_worker_payout_signed',
+        address: { account_address: 'EQA1' }, in_msg: { value: '100', msg_data: {} }, out_msgs: [] },
+      { contractRole: 'cocoon_worker', _op: 'ext_worker_payout_signed',
+        address: { account_address: 'EQA1' }, in_msg: { value: '200', msg_data: {} }, out_msgs: [] }, // dup
+      { contractRole: 'cocoon_worker', _op: 'ext_worker_payout_signed',
+        address: { account_address: 'EQA2' }, in_msg: { value: '300', msg_data: {} }, out_msgs: [] },
+    ];
+    expect(activeWorkers(txs)).toBe(2);
+  });
+});
+
+describe('activeClients', () => {
+  it('counts unique client addresses with charge ops', () => {
+    const txs = [
+      { contractRole: 'cocoon_proxy', _op: 'client_proxy_request',
+        in_msg: { source: 'EQC1', value: '100', msg_data: {} }, out_msgs: [] },
+      { contractRole: 'cocoon_client', _op: 'ext_client_charge_signed',
+        address: { account_address: 'EQC2' }, in_msg: { value: '50', msg_data: {} }, out_msgs: [] },
+      { contractRole: 'cocoon_proxy', _op: 'client_proxy_request',
+        in_msg: { source: 'EQC1', value: '100', msg_data: {} }, out_msgs: [] }, // dup
+    ];
+    expect(activeClients(txs)).toBe(2);
   });
 });
