@@ -11,6 +11,7 @@ import ProxyCards from './components/ProxyCards';
 import TransactionFeed from './components/TransactionFeed';
 import AddressDetail from './pages/AddressDetail';
 import NetworkHealth from './components/NetworkHealth';
+import LifespanChart from './components/LifespanChart';
 
 function Dashboard({ data, error }) {
   const [windowId, setWindowId] = useState('1h');
@@ -27,6 +28,8 @@ function Dashboard({ data, error }) {
         )}
 
         <NetworkHealth bufferRef={buffer} bufferVersion={bufferVersion} />
+
+        <LifespanChart daily={graph.computeMetrics?.daily} totals={graph.computeMetrics?.totals} />
 
         <AddressLookup graph={graph} />
 
