@@ -10,6 +10,7 @@ import AddressLookup from './components/AddressLookup';
 import ProxyCards from './components/ProxyCards';
 import TransactionFeed from './components/TransactionFeed';
 import AddressDetail from './pages/AddressDetail';
+import NetworkHealth from './components/NetworkHealth';
 
 function Dashboard({ data, error }) {
   const [windowId, setWindowId] = useState('1h');
@@ -24,6 +25,8 @@ function Dashboard({ data, error }) {
             <AlertIcon /> Data may be stale: {error}
           </Alert>
         )}
+
+        <NetworkHealth bufferRef={buffer} bufferVersion={bufferVersion} />
 
         <AddressLookup graph={graph} />
 
