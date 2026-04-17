@@ -2,124 +2,81 @@ import { Box, Flex, HStack, Text } from '@chakra-ui/react';
 import { Link as RouterLink } from 'react-router-dom';
 
 export default function Header({ connected, lastRefresh, fallbackPoll }) {
-  const today = new Date().toLocaleDateString(undefined, {
-    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
-  });
-
   return (
     <Box
       as="header"
       position="sticky"
       top={0}
       zIndex={20}
-      backdropFilter="saturate(1.4) blur(12px)"
-      bg="rgba(10, 11, 14, 0.72)"
+      bg="rgba(9, 9, 11, 0.85)"
+      backdropFilter="saturate(1.4) blur(8px)"
       borderBottom="1px solid var(--line-faint)"
     >
-      {/* Dateline rail — editorial "gazette" header */}
       <Flex
         align="center"
         justify="space-between"
-        px={{ base: 5, md: 10 }}
-        py={2}
-        borderBottom="1px solid var(--line-faint)"
-        fontSize="10px"
-        letterSpacing="0.18em"
-        textTransform="uppercase"
-        color="var(--ink-low)"
-        fontWeight="500"
-        fontFamily="var(--ff-mono)"
-        flexWrap="wrap"
+        px={{ base: 4, md: 6 }}
+        h="52px"
         gap={3}
       >
-        <Text>Vol. I · The Cocoon Network Gazette</Text>
-        <HStack spacing={4} display={{ base: 'none', md: 'flex' }}>
-          <Text>{today}</Text>
-          <Text color={connected ? 'var(--mint)' : 'var(--coral)'}>
-            {connected ? '◆ Stream connected' : '◇ Stream offline'}
-          </Text>
+        <HStack spacing={3} as={RouterLink} to="/" _hover={{ opacity: 0.85 }}>
+          <Logo />
+          <HStack spacing={2} align="baseline">
+            <Text fontSize="14px" fontWeight="600" color="var(--fg)" letterSpacing="-0.01em">
+              Cocoon Network
+            </Text>
+            <Text fontSize="11px" color="var(--fg-faint)" fontFamily="var(--ff-mono)">
+              / live
+            </Text>
+          </HStack>
+        </HStack>
+
+        <HStack spacing={4} fontSize="12px">
+          {fallbackPoll && (
+            <HStack spacing={1.5}>
+              <Box w="6px" h="6px" borderRadius="50%" bg="var(--warn)" />
+              <Text color="var(--warn)" fontFamily="var(--ff-mono)" fontSize="11px">
+                polling cache
+              </Text>
+            </HStack>
+          )}
+          <HStack spacing={1.5}>
+            <Box
+              w="6px" h="6px" borderRadius="50%"
+              bg={connected ? 'var(--ok)' : 'var(--err)'}
+              sx={{ animation: connected ? 'pulse-dot 2s infinite' : 'none' }}
+            />
+            <Text color={connected ? 'var(--fg-mid)' : 'var(--err)'} fontFamily="var(--ff-mono)" fontSize="11px">
+              {connected ? 'connected' : 'disconnected'}
+            </Text>
+          </HStack>
           {lastRefresh && (
-            <Text>Snapshot · {lastRefresh.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</Text>
+            <Text color="var(--fg-faint)" fontFamily="var(--ff-mono)" fontSize="11px"
+                  display={{ base: 'none', md: 'block' }}>
+              {lastRefresh.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+            </Text>
           )}
         </HStack>
       </Flex>
+    </Box>
+  );
+}
 
-      {/* Masthead */}
-      <Flex
-        as={RouterLink}
-        to="/"
-        align="baseline"
-        justify="space-between"
-        px={{ base: 5, md: 10 }}
-        py={{ base: 4, md: 6 }}
-        gap={4}
-        flexWrap="wrap"
-        _hover={{ opacity: 0.94 }}
-        sx={{ transition: 'opacity 200ms var(--ease-soft)' }}
-      >
-        <Box flex="1" minW="260px">
-          <Text
-            fontSize="11px"
-            color="var(--honey)"
-            letterSpacing="0.28em"
-            textTransform="uppercase"
-            mb={1}
-            fontWeight="500"
-            fontFamily="var(--ff-body)"
-          >
-            Live Network Ledger
-          </Text>
-          <Box
-            fontFamily="var(--ff-display)"
-            fontSize={{ base: '36px', md: '52px', lg: '64px' }}
-            color="var(--ink-high)"
-            fontWeight="300"
-            sx={{
-              fontVariationSettings: '"opsz" 144, "SOFT" 30',
-              letterSpacing: '-0.025em',
-              lineHeight: 0.95,
-            }}
-          >
-            Cocoon
-            <Box
-              as="span"
-              color="var(--honey)"
-              ml={3}
-              fontStyle="italic"
-              fontWeight="300"
-              sx={{ fontVariationSettings: '"opsz" 144, "SOFT" 100' }}
-            >
-              Network
-            </Box>
-          </Box>
-          <Text mt={2} fontSize="13px" color="var(--ink-mid)" letterSpacing="0.005em">
-            Decentralized AI inference · settled on TON · public read-only dashboard
-          </Text>
-        </Box>
-
-        <Box textAlign={{ base: 'left', md: 'right' }}>
-          {fallbackPoll && (
-            <Text fontSize="10px" color="var(--coral)" letterSpacing="0.12em" textTransform="uppercase"
-                  fontFamily="var(--ff-mono)" mb={2}>
-              Live stream offline · polling cache
-            </Text>
-          )}
-          <HStack spacing={2} justify={{ base: 'flex-start', md: 'flex-end' }} align="center">
-            <Box
-              w="10px"
-              h="10px"
-              borderRadius="50%"
-              bg={connected ? 'var(--mint)' : 'var(--coral)'}
-              sx={{ animation: connected ? 'pulse-halo 2.4s infinite var(--ease-soft)' : 'none' }}
-            />
-            <Text fontSize="11px" color={connected ? 'var(--mint)' : 'var(--coral)'}
-                  letterSpacing="0.22em" textTransform="uppercase" fontWeight="500"
-                  fontFamily="var(--ff-mono)">
-              {connected ? 'Live' : 'Offline'}
-            </Text>
-          </HStack>
-        </Box>
-      </Flex>
+function Logo() {
+  return (
+    <Box
+      w="22px"
+      h="22px"
+      borderRadius="5px"
+      display="flex"
+      alignItems="center"
+      justifyContent="center"
+      bg="var(--accent)"
+    >
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#06170d" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="9"/>
+        <path d="M12 3v18M3 12h18"/>
+      </svg>
     </Box>
   );
 }

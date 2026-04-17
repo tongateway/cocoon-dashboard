@@ -15,9 +15,9 @@ function bucket(txs, windowMs, bucketCount, valueFn) {
   return out;
 }
 
-function buildArea(values, w, h, pad = 6) {
+function buildArea(values, w, h, pad = 4) {
   if (values.length < 2) return '';
-  const max = Math.max(...values, 1);
+  const max = Math.max(...values, 0.0001);
   const step = (w - pad * 2) / (values.length - 1);
   const pts = values.map((v, i) => {
     const x = pad + i * step;
@@ -26,23 +26,20 @@ function buildArea(values, w, h, pad = 6) {
   });
   return `M${pts[0]} L${pts.slice(1).join(' L')} L${(pad + (values.length - 1) * step).toFixed(1)},${(h - pad).toFixed(1)} L${pad},${(h - pad).toFixed(1)} Z`;
 }
-
-function buildLine(values, w, h, pad = 6) {
+function buildLine(values, w, h, pad = 4) {
   if (values.length < 2) return '';
-  const max = Math.max(...values, 1);
+  const max = Math.max(...values, 0.0001);
   const step = (w - pad * 2) / (values.length - 1);
-  return values
-    .map((v, i) => {
-      const x = pad + i * step;
-      const y = h - pad - (v / max) * (h - pad * 2);
-      return `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`;
-    })
-    .join(' ');
+  return values.map((v, i) => {
+    const x = pad + i * step;
+    const y = h - pad - (v / max) * (h - pad * 2);
+    return `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(' ');
 }
 
 function Donut({ slices }) {
   const total = slices.reduce((a, s) => a + s.value, 0) || 1;
-  const r = 44, circ = 2 * Math.PI * r;
+  const r = 42, circ = 2 * Math.PI * r;
   const segments = slices.reduce((acc, s) => {
     const len = (s.value / total) * circ;
     acc.items.push({ color: s.color, len, offset: acc.runningOffset });
@@ -50,14 +47,13 @@ function Donut({ slices }) {
     return acc;
   }, { items: [], runningOffset: 0 }).items;
   return (
-    <svg viewBox="0 0 120 120" width="110" height="110">
-      <circle cx="60" cy="60" r={r} fill="none" stroke="var(--line)" strokeWidth="10" />
+    <svg viewBox="0 0 110 110" width="96" height="96">
+      <circle cx="55" cy="55" r={r} fill="none" stroke="var(--line-faint)" strokeWidth="8" />
       {segments.map((seg, i) => (
-        <circle key={i} cx="60" cy="60" r={r} fill="none" stroke={seg.color} strokeWidth="10"
+        <circle key={i} cx="55" cy="55" r={r} fill="none" stroke={seg.color} strokeWidth="8"
                 strokeDasharray={`${seg.len} ${circ}`} strokeDashoffset={-seg.offset}
-                strokeLinecap="butt"
-                transform="rotate(-90 60 60)"
-                style={{ transition: 'stroke-dasharray 400ms var(--ease-soft)' }} />
+                transform="rotate(-90 55 55)"
+                style={{ transition: 'stroke-dasharray 400ms var(--ease)' }} />
       ))}
     </svg>
   );
@@ -97,113 +93,78 @@ export default function TrendCharts({ bufferRef, bufferVersion, window: windowId
   const subsidy = Math.max(0, rev - spend);
 
   return (
-    <Box className="fade-up-3">
-      <HStack spacing={4} align="baseline" flexWrap="wrap" mb={4}>
-        <Text
-          fontSize="11px"
-          fontFamily="var(--ff-mono)"
-          letterSpacing="0.24em"
-          textTransform="uppercase"
-          color="var(--ink-low)"
-        >
-          § III · Flow
-        </Text>
-        <Text
-          fontFamily="var(--ff-display)"
-          fontStyle="italic"
-          fontSize="16px"
-          color="var(--ink-mid)"
-          sx={{ fontVariationSettings: '"opsz" 18, "SOFT" 80' }}
-        >
-          where the TON moves over the selected window
-        </Text>
-      </HStack>
+    <Grid templateColumns={{ base: '1fr', lg: '2fr 1fr' }} gap={3} className="fade-in">
+      <Panel title="TON flow" subtitle={`compute spend vs worker payouts · ${w.label}`}>
+        <svg viewBox="0 0 400 120" width="100%" height="120" preserveAspectRatio="none" style={{ display: 'block', marginTop: '12px' }}>
+          <defs>
+            <linearGradient id="gSpend" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#22c55e" stopOpacity="0.35" />
+              <stop offset="100%" stopColor="#22c55e" stopOpacity="0" />
+            </linearGradient>
+            <linearGradient id="gRev" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#60a5fa" stopOpacity="0.3" />
+              <stop offset="100%" stopColor="#60a5fa" stopOpacity="0" />
+            </linearGradient>
+          </defs>
+          <line x1="4" y1="116" x2="396" y2="116" stroke="var(--line-faint)" strokeWidth="0.5" />
+          <path d={buildArea(spendBuckets, 400, 120)} fill="url(#gSpend)" />
+          <path d={buildLine(spendBuckets, 400, 120)} fill="none" stroke="var(--accent)" strokeWidth="1.4" strokeLinejoin="round" />
+          <path d={buildArea(revBuckets, 400, 120)} fill="url(#gRev)" />
+          <path d={buildLine(revBuckets, 400, 120)} fill="none" stroke="var(--info)" strokeWidth="1.4" strokeLinejoin="round" />
+        </svg>
 
-      <Grid templateColumns={{ base: '1fr', lg: '2fr 1fr' }} gap={0}
-            borderTop="1px solid var(--line-faint)"
-            borderBottom="1px solid var(--line-faint)"
-            sx={{
-              '& > div': { borderRight: { base: 'none', lg: '1px solid var(--line-faint)' } },
-              '& > div:last-child': { borderRight: 'none', borderTop: { base: '1px solid var(--line-faint)', lg: 'none' } },
-            }}
-      >
-        {/* Flow area chart */}
-        <Box p={{ base: 5, md: 6 }}>
-          <HStack justify="space-between" align="baseline" mb={4} flexWrap="wrap">
-            <Box>
-              <Text fontFamily="var(--ff-display)" fontSize="22px" color="var(--ink-high)" fontWeight="400"
-                sx={{ fontVariationSettings: '"opsz" 32, "SOFT" 30', letterSpacing: '-0.01em' }}>
-                TON flow
+        <HStack spacing={5} mt={3} fontSize="11px" fontFamily="var(--ff-mono)" color="var(--fg-dim)" flexWrap="wrap">
+          <Legend dot="var(--accent)" label="spend" value={`${spend.toFixed(2)} TON`} />
+          <Legend dot="var(--info)" label="payouts" value={`${rev.toFixed(2)} TON`} />
+        </HStack>
+      </Panel>
+
+      <Panel title="Split" subtitle={`where TON settles · ${w.label}`}>
+        <HStack spacing={4} mt={2} align="center">
+          <Donut slices={[
+            { color: 'var(--info)', value: rev },
+            { color: 'var(--warn)', value: Math.max(com, subsidy) },
+          ]} />
+          <VStack align="stretch" spacing={2} fontFamily="var(--ff-mono)" fontSize="12px" flex={1}>
+            <HStack justify="space-between">
+              <Legend dot="var(--info)" label="workers" />
+              <Text color="var(--fg)" fontWeight="500">
+                {rev + Math.max(com, subsidy) > 0 ? Math.round((rev / (rev + Math.max(com, subsidy))) * 100) : 0}%
               </Text>
-              <Text fontFamily="var(--ff-display)" fontStyle="italic" fontSize="13px" color="var(--ink-mid)"
-                sx={{ fontVariationSettings: '"opsz" 14, "SOFT" 80' }}>
-                compute spend vs. worker payouts · {w.label}
+            </HStack>
+            <HStack justify="space-between">
+              <Legend dot="var(--warn)" label={subsidy > com ? 'subsidy' : 'commission'} />
+              <Text color="var(--fg)" fontWeight="500">
+                {rev + Math.max(com, subsidy) > 0 ? Math.round((Math.max(com, subsidy) / (rev + Math.max(com, subsidy))) * 100) : 0}%
               </Text>
-            </Box>
-          </HStack>
-
-          <svg viewBox="0 0 400 140" width="100%" height="140" preserveAspectRatio="none" style={{ display: 'block', overflow: 'visible' }}>
-            <defs>
-              <linearGradient id="gSpend" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#e8c674" stopOpacity="0.4" />
-                <stop offset="100%" stopColor="#e8c674" stopOpacity="0" />
-              </linearGradient>
-              <linearGradient id="gRev" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#82d5a7" stopOpacity="0.3" />
-                <stop offset="100%" stopColor="#82d5a7" stopOpacity="0" />
-              </linearGradient>
-            </defs>
-            {/* grid baseline */}
-            <line x1="6" y1="134" x2="394" y2="134" stroke="var(--line-faint)" strokeWidth="0.5" />
-            <path d={buildArea(spendBuckets, 400, 140)} fill="url(#gSpend)" />
-            <path d={buildLine(spendBuckets, 400, 140)} fill="none" stroke="var(--honey)" strokeWidth="1.3" strokeLinejoin="round" />
-            <path d={buildArea(revBuckets, 400, 140)} fill="url(#gRev)" />
-            <path d={buildLine(revBuckets, 400, 140)} fill="none" stroke="var(--mint)" strokeWidth="1.3" strokeLinejoin="round" />
-          </svg>
-
-          <HStack spacing={6} mt={4} fontSize="11px" fontFamily="var(--ff-mono)" color="var(--ink-mid)" flexWrap="wrap">
-            <HStack spacing={2}>
-              <Box w="10px" h="1.5px" bg="var(--honey)" />
-              <Text>Compute spend · <Box as="span" color="var(--ink-high)">{spend.toFixed(2)} TON</Box></Text>
             </HStack>
-            <HStack spacing={2}>
-              <Box w="10px" h="1.5px" bg="var(--mint)" />
-              <Text>Worker payouts · <Box as="span" color="var(--ink-high)">{rev.toFixed(2)} TON</Box></Text>
-            </HStack>
-          </HStack>
-        </Box>
+          </VStack>
+        </HStack>
+      </Panel>
+    </Grid>
+  );
+}
 
-        {/* Donut */}
-        <Box p={{ base: 5, md: 6 }}>
-          <Box>
-            <Text fontFamily="var(--ff-display)" fontSize="22px" color="var(--ink-high)" fontWeight="400"
-              sx={{ fontVariationSettings: '"opsz" 32, "SOFT" 30', letterSpacing: '-0.01em' }}>
-              Split
-            </Text>
-            <Text fontFamily="var(--ff-display)" fontStyle="italic" fontSize="13px" color="var(--ink-mid)"
-              sx={{ fontVariationSettings: '"opsz" 14, "SOFT" 80' }} mb={4}>
-              where the TON settles · {w.label}
-            </Text>
-          </Box>
-
-          <HStack spacing={5} align="center">
-            <Donut slices={[
-              { color: 'var(--mint)', value: rev },
-              { color: 'var(--honey)', value: Math.max(com, subsidy) },
-            ]} />
-            <VStack align="stretch" spacing={3} fontFamily="var(--ff-mono)" fontSize="12px" flex={1}>
-              <HStack spacing={3}>
-                <Box w="8px" h="8px" borderRadius="50%" bg="var(--mint)" />
-                <Text color="var(--ink-high)">Workers · {spend > 0 ? Math.round((rev / (rev + Math.max(com, subsidy))) * 100) : 0}%</Text>
-              </HStack>
-              <HStack spacing={3}>
-                <Box w="8px" h="8px" borderRadius="50%" bg="var(--honey)" />
-                <Text color="var(--ink-high)">{subsidy > com ? 'Subsidy' : 'Commission'} · {rev + Math.max(com, subsidy) > 0 ? Math.round((Math.max(com, subsidy) / (rev + Math.max(com, subsidy))) * 100) : 0}%</Text>
-              </HStack>
-            </VStack>
-          </HStack>
-        </Box>
-      </Grid>
+function Panel({ title, subtitle, children }) {
+  return (
+    <Box bg="var(--bg-elev-1)" border="1px solid var(--line-faint)" borderRadius="var(--radius)" p={4}>
+      <Text fontSize="13px" fontWeight="600" color="var(--fg)" letterSpacing="-0.005em">
+        {title}
+      </Text>
+      <Text fontSize="11px" color="var(--fg-dim)" mt={0.5}>
+        {subtitle}
+      </Text>
+      {children}
     </Box>
+  );
+}
+
+function Legend({ dot, label, value }) {
+  return (
+    <HStack spacing={1.5}>
+      <Box w="8px" h="8px" borderRadius="2px" bg={dot} />
+      <Text color="var(--fg-dim)">{label}</Text>
+      {value && <Text color="var(--fg)">· {value}</Text>}
+    </HStack>
   );
 }

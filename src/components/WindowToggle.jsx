@@ -12,34 +12,34 @@ export default function WindowToggle({ value, onChange }) {
   return (
     <HStack
       spacing={0}
-      border="1px solid var(--line)"
-      borderRadius="2px"
-      overflow="hidden"
-      height="28px"
+      border="1px solid var(--line-faint)"
+      borderRadius="var(--radius-sm)"
+      bg="var(--bg-elev-1)"
+      p="2px"
     >
-      {WINDOWS.map((w, i) => {
+      {WINDOWS.map((w) => {
         const active = value === w.id;
         return (
           <Box
             as="button"
             key={w.id}
             onClick={() => onChange(w.id)}
-            px={3}
-            h="100%"
+            px={2.5}
+            h="24px"
+            minW="36px"
             display="flex"
             alignItems="center"
             justifyContent="center"
-            minW="38px"
             fontFamily="var(--ff-mono)"
             fontSize="11px"
             fontWeight="500"
-            letterSpacing="0.05em"
-            color={active ? 'var(--bg-void)' : 'var(--ink-mid)'}
-            bg={active ? 'var(--honey)' : 'transparent'}
-            borderLeft={i === 0 ? 'none' : '1px solid var(--line-faint)'}
-            _hover={{ color: active ? 'var(--bg-void)' : 'var(--ink-high)',
-                      bg: active ? 'var(--honey)' : 'rgba(232, 198, 116, 0.06)' }}
-            sx={{ transition: 'all 150ms var(--ease-soft)', cursor: 'pointer' }}
+            color={active ? 'var(--fg)' : 'var(--fg-dim)'}
+            bg={active ? 'var(--bg-elev-2)' : 'transparent'}
+            borderRadius="3px"
+            border="1px solid"
+            borderColor={active ? 'var(--line)' : 'transparent'}
+            _hover={{ color: 'var(--fg)' }}
+            sx={{ transition: 'all 120ms var(--ease)', cursor: 'pointer' }}
           >
             {w.label}
           </Box>
