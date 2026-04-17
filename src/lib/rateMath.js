@@ -69,3 +69,43 @@ export function activeClients(txs) {
   }
   return set.size;
 }
+
+/**
+ * Classify overall network state from the tx buffer.
+ * Returns: { status, label, color, lastTxAgoSec, last1hCount, last24hCount, lastOlderActivityAgoSec }
+ * status: 'healthy' | 'quiet' | 'stalled' | 'dormant'
+ * "Last older activity" = most recent tx that is older than 24 hours — i.e., the tail of the previous active period.
+ */
+export function networkHealth(txs, nowMs = Date.now()) {
+  const now = nowMs / 1000;
+  let last5minCount = 0, last1hCount = 0, last24hCount = 0;
+  let lastTx = 0, lastOlder = 0;
+  for (const t of txs) {
+    const age = now - (t.utime ?? 0);
+    if (age < 0) continue;
+    if (age < 300) last5minCount++;
+    if (age < 3600) last1hCount++;
+    if (age < 86400) last24hCount++;
+    if ((t.utime ?? 0) > lastTx) lastTx = t.utime;
+    if (age >= 86400 && (t.utime ?? 0) > lastOlder) lastOlder = t.utime;
+  }
+
+  let status, label, color;
+  if (last5minCount > 0 && last1hCount >= 10) {
+    status = 'healthy'; label = 'Healthy'; color = '#3fb950';
+  } else if (last1hCount > 0) {
+    status = 'quiet'; label = 'Quiet'; color = '#d29922';
+  } else if (last24hCount > 0) {
+    status = 'stalled'; label = 'Stalled'; color = '#f0883e';
+  } else {
+    status = 'dormant'; label = 'Dormant'; color = '#f85149';
+  }
+
+  return {
+    status, label, color,
+    lastTxAgoSec: lastTx ? Math.max(0, Math.floor(now - lastTx)) : null,
+    last1hCount,
+    last24hCount,
+    lastOlderActivityAgoSec: lastOlder ? Math.max(0, Math.floor(now - lastOlder)) : null,
+  };
+}

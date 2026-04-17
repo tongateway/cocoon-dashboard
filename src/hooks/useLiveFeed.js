@@ -42,9 +42,10 @@ export function useLiveFeed({ accounts, seed = [], onFallback }) {
   const [version, setVersion] = useState(0); // bumps on every buffer change
   const [connected, setConnected] = useState(false);
 
-  // Seed the buffer once on mount (or when seed array identity changes)
+  // Seed the buffer once on mount. Seed comes newest-first from the worker;
+  // push in reverse so after the unshift-per-push, buffer[0] ends up newest.
   useEffect(() => {
-    for (const tx of seed) buffer.push(tx);
+    for (let i = seed.length - 1; i >= 0; i--) buffer.push(seed[i]);
     setVersion(v => v + 1);
   }, [seed, buffer]);
 

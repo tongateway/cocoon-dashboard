@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeSpend, workerRevenue, commission, tokensProcessed, activeWorkers, activeClients, inWindow } from './rateMath';
+import { computeSpend, workerRevenue, commission, tokensProcessed, activeWorkers, activeClients, inWindow, networkHealth } from './rateMath';
 
 function tx({ role, opName, inValue = 0 }) {
   return {
@@ -115,5 +115,48 @@ describe('activeClients', () => {
         in_msg: { source: 'EQC1', value: '100', msg_data: {} }, out_msgs: [] }, // dup
     ];
     expect(activeClients(txs)).toBe(2);
+  });
+});
+
+describe('networkHealth', () => {
+  const now = 1_700_000_000;
+  const t = (ago) => ({ utime: now - ago }); // ago is in seconds
+
+  it('returns dormant for empty buffer', () => {
+    const h = networkHealth([], now * 1000);
+    expect(h.status).toBe('dormant');
+    expect(h.last1hCount).toBe(0);
+    expect(h.lastTxAgoSec).toBeNull();
+  });
+
+  it('returns healthy when recent activity + sustained burst', () => {
+    const txs = [];
+    for (let i = 0; i < 12; i++) txs.push(t(i * 60));  // 12 txs over 12 minutes, incl last 5min
+    const h = networkHealth(txs, now * 1000);
+    expect(h.status).toBe('healthy');
+    expect(h.last1hCount).toBe(12);
+    expect(h.lastTxAgoSec).toBe(0);
+  });
+
+  it('returns quiet when activity only beyond 5min but within 1h', () => {
+    const txs = [t(400), t(500), t(1200)]; // all between ~6min and 20min ago
+    const h = networkHealth(txs, now * 1000);
+    expect(h.status).toBe('quiet');
+    expect(h.last1hCount).toBe(3);
+  });
+
+  it('returns stalled when activity only beyond 1h but within 24h', () => {
+    const txs = [t(7200), t(10_000)]; // 2h and ~2.8h ago
+    const h = networkHealth(txs, now * 1000);
+    expect(h.status).toBe('stalled');
+    expect(h.last24hCount).toBe(2);
+    expect(h.last1hCount).toBe(0);
+  });
+
+  it('reports lastOlderActivityAgoSec for txs >24h old', () => {
+    const txs = [t(60), t(8 * 86400), t(9 * 86400)]; // one recent, two ~8-9 days ago
+    const h = networkHealth(txs, now * 1000);
+    expect(h.status).toBe('quiet'); // 1 tx in last hour, none in last 5min
+    expect(h.lastOlderActivityAgoSec).toBe(8 * 86400);
   });
 });
