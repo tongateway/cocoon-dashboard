@@ -5,18 +5,24 @@ import {
   computeSpend, workerRevenue, tokensProcessed, inWindow,
 } from '../lib/rateMath';
 
-function fmtTon(nano) {
+// ============================================================
+// Formatters — Fraunces numerals look best with tabular figures.
+// ============================================================
+function splitTon(nano) {
+  // Returns { whole, unit } for display — big whole number in display serif, unit in body sans.
   const ton = nano / 1e9;
-  if (ton >= 1000) return `${(ton / 1000).toFixed(1)}K`;
-  if (ton >= 10) return ton.toFixed(1);
-  if (ton >= 1) return ton.toFixed(2);
-  return ton.toFixed(3);
+  if (ton >= 1000) return { whole: (ton / 1000).toFixed(1), unit: 'K' };
+  if (ton >= 10)   return { whole: ton.toFixed(1), unit: '' };
+  if (ton >= 1)    return { whole: ton.toFixed(2), unit: '' };
+  if (ton > 0)     return { whole: ton.toFixed(3), unit: '' };
+  return { whole: '0', unit: '' };
 }
-function fmtCount(n) {
-  if (n >= 1e9) return `${(n / 1e9).toFixed(1)}B`;
-  if (n >= 1e6) return `${(n / 1e6).toFixed(1)}M`;
-  if (n >= 1e3) return `${(n / 1e3).toFixed(0)}K`;
-  return String(n);
+function splitCount(n) {
+  if (!n) return { whole: '0', unit: '' };
+  if (n >= 1e9) return { whole: (n / 1e9).toFixed(1), unit: 'B' };
+  if (n >= 1e6) return { whole: (n / 1e6).toFixed(1), unit: 'M' };
+  if (n >= 1e3) return { whole: (n / 1e3).toFixed(0), unit: 'K' };
+  return { whole: String(n), unit: '' };
 }
 function timeAgo(utime) {
   if (!utime) return '—';
@@ -25,14 +31,10 @@ function timeAgo(utime) {
   if (s < 3600) return `${Math.floor(s / 60)}m`;
   return `${Math.floor(s / 3600)}h`;
 }
-
-// Convert window "per-hour rate": divide window total by (windowMs / 3600_000)
 function asHourlyRate(total, windowMs) {
   if (!isFinite(windowMs) || windowMs === 0) return total;
   return total / (windowMs / (60 * 60 * 1000));
 }
-
-// 24 sparkline buckets, each is one hour
 function bucketSparkline(txs, valueFn, bucketMs = 60 * 60 * 1000, buckets = 24) {
   const now = Date.now();
   const out = new Array(buckets).fill(0);
@@ -54,8 +56,6 @@ export default function LiveHero({
   const windowTxs = isFinite(w.ms) ? inWindow(allTxs, w.ms) : allTxs;
   const last24h = inWindow(allTxs, 24 * 60 * 60 * 1000);
 
-  // For "All" we use the worker's pre-computed totals (covers full history,
-  // not limited by the 2000-item buffer cap). For other windows we sum the buffer.
   const useTotals = windowId === 'all' && computeMetricsTotals;
   const spend = useTotals ? Math.round(computeMetricsTotals.computeSpendTon * 1e9) : computeSpend(windowTxs);
   const rev = useTotals ? Math.round(computeMetricsTotals.workerRevenueTon * 1e9) : workerRevenue(windowTxs);
@@ -73,96 +73,221 @@ export default function LiveHero({
     tx.contractRole === 'cocoon_worker' && tx._op === 'ext_worker_payout_signed'
       ? parseInt(tx.in_msg?.value || '0', 10) / 1e9 : 0);
 
+  // "Balance" KPI: worker payouts relative to client spend.
+  //   > 100%  → network subsidizes workers (workers earn more than clients pay)
+  //   < 100%  → network keeps a commission
+  //   = 100%  → exact pass-through
+  const ratioPct = spend > 0 ? (rev / spend) * 100 : null;
+  const balance = computeBalance(ratioPct, spend, rev, spendHourly, revHourly);
+
+  const unit = windowId === 'all' ? 'TON total' : 'TON / hr';
+  const unitCount = windowId === 'all' ? 'total' : '/ hr';
+
   return (
-    <Box>
-      <Flex justify="space-between" align="flex-start" wrap="wrap" gap={3} mb={4}>
-        <Box>
-          <HStack spacing={2} mb={2}>
-            <Box as="span" w="8px" h="8px" borderRadius="full" bg={isAlive ? '#3fb950' : '#8b949e'}
-                 boxShadow={isAlive ? '0 0 0 0 rgba(63,185,80,0.6)' : 'none'}
-                 sx={{ animation: isAlive ? 'pulse 1.4s infinite' : 'none',
-                       '@keyframes pulse': {
-                          '0%': { boxShadow: '0 0 0 0 rgba(63,185,80,0.6)' },
-                          '70%': { boxShadow: '0 0 0 10px rgba(63,185,80,0)' },
-                          '100%': { boxShadow: '0 0 0 0 rgba(63,185,80,0)' }
-                       } }} />
-            <Text fontSize="xs" fontWeight="600" letterSpacing="wide" color={isAlive ? '#3fb950' : '#8b949e'}>
-              {isAlive ? 'LIVE' : 'IDLE'}
-            </Text>
-          </HStack>
-          <Text fontSize="28px" fontWeight="700" color="#f0f6fc" lineHeight="1">Cocoon Network</Text>
-          <Text fontSize="xs" color="#58a6ff" fontFamily="mono" mt={2}>
-            last tx <b>{timeAgo(lastTxUtime)} ago</b>
+    <Box className="fade-up-1">
+      {/* Section head + window toggle */}
+      <Flex justify="space-between" align="baseline" wrap="wrap" gap={4} mb={6}
+            borderBottom="1px solid var(--line-faint)" pb={4}>
+        <HStack spacing={4} align="baseline" flexWrap="wrap">
+          <Text
+            fontSize="11px"
+            fontFamily="var(--ff-mono)"
+            letterSpacing="0.24em"
+            textTransform="uppercase"
+            color="var(--ink-low)"
+          >
+            § II · Live Indicators
           </Text>
-        </Box>
-        <Box>
-          <Text fontSize="10px" textTransform="uppercase" color="#7d8590" letterSpacing="0.08em" mb={1}>
-            Time window
+          <Text
+            fontFamily="var(--ff-display)"
+            fontStyle="italic"
+            fontSize="16px"
+            color="var(--ink-mid)"
+            sx={{ fontVariationSettings: '"opsz" 18, "SOFT" 80' }}
+          >
+            {isAlive ? 'beating in real time' : 'resting'}
+          </Text>
+        </HStack>
+        <HStack spacing={3}>
+          <Text fontSize="11px" fontFamily="var(--ff-mono)" color="var(--ink-faint)"
+                letterSpacing="0.18em" textTransform="uppercase">
+            last tx · {timeAgo(lastTxUtime)} ago
           </Text>
           <WindowToggle value={windowId} onChange={onWindowChange} />
-        </Box>
+        </HStack>
       </Flex>
 
-      <Grid templateColumns={{ base: '1fr 1fr', lg: 'repeat(4, 1fr)' }} gap={3}>
-        <KpiCell
-          label="Compute spend" valueMain={fmtTon(spendHourly)} unit={windowId === 'all' ? 'TON total' : 'TON/hr'}
-          sub="paid by clients" accent values={sparkSpend} color="#3fb950"
+      {/* KPI row — hairline-separated columns, editorial type */}
+      <Grid
+        templateColumns={{ base: '1fr', md: 'repeat(2, 1fr)', lg: 'repeat(4, 1fr)' }}
+        gap={0}
+        sx={{
+          '& > div': {
+            borderRight: '1px solid var(--line-faint)',
+            borderBottom: '1px solid var(--line-faint)',
+          },
+          '& > div:last-child': { borderRight: 'none' },
+          '@media (min-width: 62em)': {
+            '& > div': { borderBottom: 'none' },
+          },
+          '@media (max-width: 62em)': {
+            '& > div:nth-of-type(2), & > div:last-child': { borderRight: 'none' },
+          },
+          '@media (max-width: 48em)': {
+            '& > div': { borderRight: 'none !important' },
+            '& > div:last-child': { borderBottom: 'none' },
+          },
+        }}
+      >
+        <Kpi
+          eyebrow="Compute spend"
+          caption="paid by clients"
+          value={splitTon(spendHourly)}
+          unit={unit}
+          tone="var(--honey)"
+          spark={sparkSpend}
+          sparkColor="var(--honey)"
+          delay="0.05s"
         />
-        <KpiCell
-          label="Worker revenue" valueMain={fmtTon(revHourly)} unit={windowId === 'all' ? 'TON total' : 'TON/hr'}
-          sub={spend > 0 ? `${Math.round((rev / spend) * 100)}% of spend` : 'paid to workers'}
-          values={sparkRev} color="#58a6ff"
+        <Kpi
+          eyebrow="Worker revenue"
+          caption="paid to workers"
+          value={splitTon(revHourly)}
+          unit={unit}
+          tone="var(--mint)"
+          spark={sparkRev}
+          sparkColor="var(--mint)"
+          delay="0.12s"
         />
-        {(() => {
-          // Worker/spend ratio = worker revenue / compute spend.
-          // > 100% → network subsidizes workers (workers earn more than clients pay).
-          // < 100% → network takes a cut (commission).
-          const ratioPct = spend > 0 ? (rev / spend) * 100 : null;
-          const isSubsidy = ratioPct !== null && ratioPct > 100;
-          const commissionHourly = Math.max(0, spendHourly - revHourly);
-          const subsidyHourly = Math.max(0, revHourly - spendHourly);
-          const unit = windowId === 'all' ? 'TON total' : 'TON/hr';
-          let label, valueMain, sub, color;
-          if (ratioPct === null) {
-            label = 'Network take-rate'; valueMain = '—'; sub = 'waiting for activity'; color = '#d29922';
-          } else if (isSubsidy) {
-            label = 'Worker subsidy';
-            valueMain = fmtTon(subsidyHourly);
-            sub = `workers earn ${Math.round(ratioPct)}% of client spend`;
-            color = '#a371f7';
-          } else {
-            label = 'Network commission';
-            valueMain = fmtTon(commissionHourly);
-            sub = `${Math.round(100 - ratioPct)}% take · proxies+root`;
-            color = '#d29922';
-          }
-          return (
-            <KpiCell
-              label={label} valueMain={valueMain} unit={ratioPct === null ? '' : unit} sub={sub}
-              values={sparkSpend.map((v, i) => Math.abs(v - sparkRev[i]))} color={color}
-            />
-          );
-        })()}
-        <KpiCell
-          label="Tokens processed" valueMain={fmtCount(tokHourly)} unit={windowId === 'all' ? ' total' : '/hr'}
-          sub="~ price_per_token: 20 nanoTON" values={sparkSpend} color="#a371f7"
+        <Kpi
+          eyebrow={balance.eyebrow}
+          caption={balance.caption}
+          value={balance.value}
+          unit={balance.unit || unit}
+          tone={balance.tone}
+          spark={sparkSpend.map((v, i) => Math.abs(v - sparkRev[i]))}
+          sparkColor={balance.tone}
+          delay="0.18s"
+        />
+        <Kpi
+          eyebrow="Tokens processed"
+          caption={`~ ${pricePerToken} nanoTON / token`}
+          value={splitCount(tokHourly)}
+          unit={unitCount}
+          tone="var(--plum)"
+          spark={sparkSpend}
+          sparkColor="var(--plum)"
+          delay="0.25s"
         />
       </Grid>
     </Box>
   );
 }
 
-function KpiCell({ label, valueMain, unit, sub, values, color, accent }) {
+function computeBalance(ratioPct, spend, rev, spendHourly, revHourly) {
+  if (ratioPct === null) {
+    return {
+      eyebrow: 'Network take-rate',
+      caption: 'waiting for activity',
+      value: { whole: '—', unit: '' },
+      unit: '',
+      tone: 'var(--ink-faint)',
+    };
+  }
+  if (ratioPct > 100) {
+    const subsidyHourly = Math.max(0, revHourly - spendHourly);
+    return {
+      eyebrow: 'Worker subsidy',
+      caption: `workers earn ${Math.round(ratioPct)}% of client spend`,
+      value: splitTon(subsidyHourly),
+      tone: 'var(--plum)',
+    };
+  }
+  const commissionHourly = Math.max(0, spendHourly - revHourly);
+  return {
+    eyebrow: 'Network commission',
+    caption: `${Math.round(100 - ratioPct)}% take · proxies + root`,
+    value: splitTon(commissionHourly),
+    tone: 'var(--honey)',
+  };
+}
+
+function Kpi({ eyebrow, caption, value, unit, tone, spark, sparkColor, delay }) {
   return (
-    <Box bg="#161b22" border="1px solid #30363d" borderRadius="10px" p={3}
-         position="relative" overflow="hidden">
-      {accent && <Box position="absolute" top={0} left={0} w="3px" h="100%" bg="#3fb950" />}
-      <Text fontSize="10px" textTransform="uppercase" color="#7d8590" letterSpacing="0.08em">{label}</Text>
-      <Text fontSize="22px" fontWeight="600" color="#f0f6fc" mt={1}>
-        {valueMain} <Text as="span" fontSize="12px" color="#7d8590" fontWeight="400">{unit}</Text>
+    <Box
+      p={{ base: 5, md: 6 }}
+      position="relative"
+      className="fade-up"
+      sx={{ animationDelay: delay }}
+    >
+      {/* Eyebrow */}
+      <Text
+        fontSize="10px"
+        fontFamily="var(--ff-body)"
+        letterSpacing="0.22em"
+        textTransform="uppercase"
+        color="var(--ink-low)"
+        fontWeight="500"
+        mb={4}
+      >
+        {eyebrow}
       </Text>
-      <Text fontSize="11px" color="#8b949e" mt={1}>{sub}</Text>
-      <Box mt={2}><Sparkline values={values} color={color} height={24} width={100} /></Box>
+
+      {/* Big display number */}
+      <HStack align="baseline" spacing={2} mb={1}>
+        <Text
+          fontFamily="var(--ff-display)"
+          fontSize={{ base: '48px', md: '58px' }}
+          color={tone}
+          fontWeight="300"
+          sx={{
+            fontVariationSettings: '"opsz" 144, "SOFT" 10',
+            letterSpacing: '-0.03em',
+            lineHeight: 1,
+            fontVariantNumeric: 'tabular-nums lining-nums',
+          }}
+        >
+          {value.whole}
+        </Text>
+        {value.unit && (
+          <Text
+            fontFamily="var(--ff-display)"
+            fontSize={{ base: '28px', md: '34px' }}
+            color={tone}
+            fontStyle="italic"
+            fontWeight="300"
+            sx={{ fontVariationSettings: '"opsz" 72, "SOFT" 100' }}
+          >
+            {value.unit}
+          </Text>
+        )}
+        <Text
+          fontSize="12px"
+          color="var(--ink-low)"
+          fontFamily="var(--ff-body)"
+          letterSpacing="-0.005em"
+          ml={1}
+        >
+          {unit}
+        </Text>
+      </HStack>
+
+      {/* Caption */}
+      <Text
+        fontFamily="var(--ff-display)"
+        fontStyle="italic"
+        fontSize="13px"
+        color="var(--ink-mid)"
+        sx={{ fontVariationSettings: '"opsz" 16, "SOFT" 90' }}
+        mb={3}
+      >
+        {caption}
+      </Text>
+
+      {/* Sparkline */}
+      <Box opacity={0.85}>
+        <Sparkline values={spark} color={sparkColor} height={28} width={100} />
+      </Box>
     </Box>
   );
 }

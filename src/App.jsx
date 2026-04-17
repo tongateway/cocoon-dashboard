@@ -19,17 +19,31 @@ function Dashboard({ data, error }) {
   const { graph, buffer, bufferVersion, isAlive, lastTxUtime } = data;
 
   return (
-    <Box px={{ base: 4, lg: 8 }} py={6} maxW="1400px" mx="auto">
-      <VStack spacing={6} align="stretch">
+    <Box
+      px={{ base: 5, md: 10, lg: 14 }}
+      py={{ base: 6, md: 10 }}
+      maxW="1360px"
+      mx="auto"
+    >
+      <VStack spacing={{ base: 10, md: 14 }} align="stretch">
         {error && (
-          <Alert status="warning" variant="subtle" borderRadius="lg" bg="orange.900" color="orange.200">
-            <AlertIcon /> Data may be stale: {error}
+          <Alert
+            status="warning"
+            variant="subtle"
+            bg="rgba(245, 139, 124, 0.06)"
+            color="var(--coral)"
+            borderRadius="2px"
+            border="1px solid rgba(245, 139, 124, 0.3)"
+            fontFamily="var(--ff-display)"
+            fontStyle="italic"
+            sx={{ fontVariationSettings: '"opsz" 16, "SOFT" 80' }}
+          >
+            <AlertIcon color="var(--coral)" />
+            Data may be stale — {error}
           </Alert>
         )}
 
         <NetworkHealth bufferRef={buffer} bufferVersion={bufferVersion} />
-
-        <LifespanChart daily={graph.computeMetrics?.daily} totals={graph.computeMetrics?.totals} />
 
         <AddressLookup graph={graph} />
 
@@ -42,6 +56,8 @@ function Dashboard({ data, error }) {
         />
 
         <TrendCharts bufferRef={buffer} bufferVersion={bufferVersion} window={windowId} computeMetrics={graph.computeMetrics} />
+
+        <LifespanChart daily={graph.computeMetrics?.daily} totals={graph.computeMetrics?.totals} />
 
         <ActorsPanel graph={graph} bufferRef={buffer} bufferVersion={bufferVersion} />
 
@@ -63,7 +79,7 @@ function AppContent() {
   const data = useNetworkData();
 
   return (
-    <Box minH="100vh" bg="#0d1117">
+    <Box minH="100vh" color="var(--ink-high)" position="relative">
       <Header
         connected={data.connected}
         lastRefresh={data.lastRefresh}
@@ -71,11 +87,21 @@ function AppContent() {
       />
 
       {data.loading && !data.graph ? (
-        <Center h="80vh">
-          <VStack spacing={4}>
-            <Spinner size="xl" color="brand.400" thickness="3px" />
-            <Text color="gray.400">Discovering Cocoon Network contracts…</Text>
-            <Text color="gray.600" fontSize="sm">This may take a few seconds</Text>
+        <Center minH="70vh">
+          <VStack spacing={5}>
+            <Spinner size="lg" color="var(--honey)" thickness="2px" emptyColor="var(--line)" />
+            <Text
+              fontFamily="var(--ff-display)"
+              fontStyle="italic"
+              fontSize="18px"
+              color="var(--ink-mid)"
+              sx={{ fontVariationSettings: '"opsz" 20, "SOFT" 80' }}
+            >
+              discovering the network…
+            </Text>
+            <Text fontSize="11px" color="var(--ink-faint)" fontFamily="var(--ff-mono)" letterSpacing="0.18em" textTransform="uppercase">
+              crawling root · classifying contracts
+            </Text>
           </VStack>
         </Center>
       ) : (
@@ -85,15 +111,37 @@ function AppContent() {
         </Routes>
       )}
 
-      <Box as="footer" borderTop="1px" borderColor="#30363d" mt={8} py={6} px={8}>
-        <HStack justify="center" spacing={2} flexWrap="wrap">
-          <Text fontSize="xs" color="gray.500">Built by</Text>
-          <Link as={RouterLink} to="/address/UQBKZ9V7mBDva2kQHYXfzcC4LJwtgie1O60xxqke_-vfOM0K"
-                color="brand.400" fontSize="xs" fontWeight="medium" _hover={{ color: 'brand.300' }}>
-            Agentmeme
-          </Link>
-          <Text fontSize="xs" color="gray.600" fontFamily="mono">UQBKZ9V7...vfOM0K</Text>
-        </HStack>
+      {/* Editorial colophon footer */}
+      <Box
+        as="footer"
+        borderTop="1px solid var(--line-faint)"
+        mt={16}
+        py={10}
+        px={{ base: 5, md: 10 }}
+      >
+        <Box maxW="1360px" mx="auto">
+          <Text
+            fontFamily="var(--ff-display)"
+            fontStyle="italic"
+            fontSize="14px"
+            color="var(--ink-low)"
+            mb={3}
+            sx={{ fontVariationSettings: '"opsz" 16, "SOFT" 80' }}
+          >
+            Colophon
+          </Text>
+          <HStack spacing={6} flexWrap="wrap" fontSize="11px" fontFamily="var(--ff-mono)"
+                  color="var(--ink-faint)" letterSpacing="0.12em" textTransform="uppercase">
+            <Text>Built by{' '}
+              <Link as={RouterLink} to="/address/UQBKZ9V7mBDva2kQHYXfzcC4LJwtgie1O60xxqke_-vfOM0K"
+                    color="var(--honey)" _hover={{ color: 'var(--ink-high)' }}>
+                Agentmeme
+              </Link>
+            </Text>
+            <Text>Data · TON mainnet via toncenter + tonapi</Text>
+            <Text>Typeset in Fraunces & Geist</Text>
+          </HStack>
+        </Box>
       </Box>
     </Box>
   );

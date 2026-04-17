@@ -4,6 +4,7 @@ import { ChakraProvider, ColorModeScript } from '@chakra-ui/react';
 import { Buffer } from 'buffer';
 import theme from './theme';
 import App from './App';
+import './styles/global.css';
 
 window.Buffer = Buffer;
 

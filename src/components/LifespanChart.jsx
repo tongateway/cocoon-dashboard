@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef } from 'react';
-import { Box, HStack, Text, Button } from '@chakra-ui/react';
+import { Box, HStack, Text, VStack } from '@chakra-ui/react';
 
 function daysBetween(isoA, isoB) {
   const a = new Date(isoA).getTime();
@@ -67,22 +67,18 @@ function sliceForTimeframe(filled, tfId) {
 }
 
 function monthTickIndexes(filled) {
-  // Return indexes whose day corresponds to the 1st of a month (month boundary).
   const out = [];
   let prev = '';
   for (let i = 0; i < filled.length; i++) {
-    const m = filled[i].date.slice(0, 7); // YYYY-MM
-    if (m !== prev) {
-      out.push(i);
-      prev = m;
-    }
+    const m = filled[i].date.slice(0, 7);
+    if (m !== prev) { out.push(i); prev = m; }
   }
   return out;
 }
 
 // SVG dims
-const W = 800, H = 160;
-const PAD_L = 36, PAD_R = 12, PAD_T = 10, PAD_B = 28;
+const W = 800, H = 180;
+const PAD_L = 42, PAD_R = 18, PAD_T = 14, PAD_B = 32;
 const PLOT_W = W - PAD_L - PAD_R;
 const PLOT_H = H - PAD_T - PAD_B;
 
@@ -96,8 +92,11 @@ export default function LifespanChart({ daily, totals }) {
 
   if (!filled.length) {
     return (
-      <Box bg="#161b22" border="1px solid #30363d" borderRadius="10px" p={4}>
-        <Text fontSize="13px" color="#8b949e">No historical activity data yet.</Text>
+      <Box py={8} borderTop="1px solid var(--line-faint)" borderBottom="1px solid var(--line-faint)">
+        <Text fontSize="13px" color="var(--ink-mid)" fontFamily="var(--ff-display)" fontStyle="italic"
+              sx={{ fontVariationSettings: '"opsz" 14, "SOFT" 80' }}>
+          No historical activity yet.
+        </Text>
       </Box>
     );
   }
@@ -119,86 +118,109 @@ export default function LifespanChart({ daily, totals }) {
   const handleMove = (e) => {
     const rect = svgRef.current.getBoundingClientRect();
     const xSvg = ((e.clientX - rect.left) / rect.width) * W;
-    if (xSvg < PAD_L || xSvg > W - PAD_R) {
-      setHoverIdx(null);
-      return;
-    }
+    if (xSvg < PAD_L || xSvg > W - PAD_R) { setHoverIdx(null); return; }
     const idx = Math.floor((xSvg - PAD_L) / barStep);
     if (idx >= 0 && idx < visible.length) setHoverIdx(idx);
     else setHoverIdx(null);
   };
 
-  // Tooltip placement (as % of SVG width, which the Box overlay uses directly)
-  const hoverXpct = hoverIdx !== null
-    ? ((PAD_L + hoverIdx * barStep + barW / 2) / W) * 100
-    : 0;
+  const hoverXpct = hoverIdx !== null ? ((PAD_L + hoverIdx * barStep + barW / 2) / W) * 100 : 0;
+
+  const daysSinceColor = daysSinceLast <= 1 ? 'var(--mint)' : daysSinceLast <= 7 ? 'var(--honey)' : 'var(--coral)';
 
   return (
-    <Box bg="#161b22" border="1px solid #30363d" borderRadius="10px" p={4}>
-      <HStack justify="space-between" mb={2} align="baseline" flexWrap="wrap" gap={2}>
-        <Text fontSize="13px" fontWeight="600" color="#e6edf3">
-          Network lifespan · daily compute spend
-        </Text>
-        <HStack spacing={1}>
-          {TIMEFRAMES.map(tf => (
-            <Button
-              key={tf.id}
-              size="xs"
-              onClick={() => { setTimeframe(tf.id); setHoverIdx(null); }}
-              variant={timeframe === tf.id ? 'solid' : 'ghost'}
-              bg={timeframe === tf.id ? 'rgba(63,185,80,0.15)' : 'transparent'}
-              color={timeframe === tf.id ? '#3fb950' : 'gray.400'}
-              borderWidth="1px"
-              borderColor={timeframe === tf.id ? 'rgba(63,185,80,0.35)' : '#30363d'}
-              borderRadius="md"
-              _hover={{ bg: timeframe === tf.id ? 'rgba(63,185,80,0.2)' : '#21262d' }}
-              fontWeight="500"
-              fontSize="xs"
-              px={3}
-            >
-              {tf.label}
-            </Button>
-          ))}
+    <Box className="fade-up-4">
+      {/* Section head */}
+      <HStack justify="space-between" align="baseline" mb={4} flexWrap="wrap" gap={3}>
+        <HStack spacing={4} align="baseline" flexWrap="wrap">
+          <Text fontSize="11px" fontFamily="var(--ff-mono)" letterSpacing="0.24em" textTransform="uppercase" color="var(--ink-low)">
+            § IV · Lifespan
+          </Text>
+          <Text fontFamily="var(--ff-display)" fontStyle="italic" fontSize="16px" color="var(--ink-mid)"
+                sx={{ fontVariationSettings: '"opsz" 18, "SOFT" 80' }}>
+            daily compute spend since the network began
+          </Text>
+        </HStack>
+        <HStack spacing={0} border="1px solid var(--line)" borderRadius="2px" overflow="hidden" height="28px">
+          {TIMEFRAMES.map((tf, i) => {
+            const active = timeframe === tf.id;
+            return (
+              <Box
+                as="button"
+                key={tf.id}
+                onClick={() => { setTimeframe(tf.id); setHoverIdx(null); }}
+                px={3}
+                h="100%"
+                display="flex"
+                alignItems="center"
+                justifyContent="center"
+                minW="38px"
+                fontFamily="var(--ff-mono)"
+                fontSize="11px"
+                fontWeight="500"
+                color={active ? 'var(--bg-void)' : 'var(--ink-mid)'}
+                bg={active ? 'var(--honey)' : 'transparent'}
+                borderLeft={i === 0 ? 'none' : '1px solid var(--line-faint)'}
+                _hover={{ color: active ? 'var(--bg-void)' : 'var(--ink-high)',
+                          bg: active ? 'var(--honey)' : 'rgba(232, 198, 116, 0.06)' }}
+                sx={{ transition: 'all 150ms var(--ease-soft)', cursor: 'pointer' }}
+              >
+                {tf.label}
+              </Box>
+            );
+          })}
         </HStack>
       </HStack>
 
-      <HStack spacing={4} fontSize="11px" color="#8b949e" flexWrap="wrap" mb={2}>
-        <Text>Running since <Box as="span" color="#e6edf3" fontWeight="500">{fmtDate(firstDate, { withYear: true })}</Box> ({lifespanDays} days)</Text>
-        <Text><Box as="span" color="#e6edf3">{activeDays}</Box> days with activity</Text>
-        <Text color={daysSinceLast <= 1 ? '#3fb950' : daysSinceLast <= 7 ? '#d29922' : '#f0883e'}>
-          Last active day: {fmtDate(lastDate)}{daysSinceLast > 0 ? ` (${daysSinceLast}d ago)` : ' (today)'}
-        </Text>
-        <Text>Total compute: <Box as="span" color="#e6edf3">{totals?.computeSpendTon?.toFixed(1) || '0'} TON</Box></Text>
-      </HStack>
+      {/* Summary strip */}
+      <Box borderTop="1px solid var(--line-faint)" borderBottom="1px solid var(--line-faint)" py={5} mb={5}>
+        <HStack spacing={{ base: 4, md: 10 }} flexWrap="wrap">
+          <Stat label="Genesis" big={fmtDate(firstDate)} sub={`${lifespanDays} days ago`} />
+          <Stat label="Days active" big={String(activeDays)} sub={`of ${filled.length} tracked`} />
+          <Stat label="Last activity" big={fmtDate(lastDate)} sub={daysSinceLast > 0 ? `${daysSinceLast}d ago` : 'today'} tone={daysSinceColor} />
+          <Stat label="Lifetime compute" big={`${(totals?.computeSpendTon || 0).toFixed(0)}`} unit="TON" tone="var(--honey)" />
+        </HStack>
+      </Box>
 
+      {/* Chart */}
       <Box position="relative">
         <svg
           ref={svgRef}
           viewBox={`0 0 ${W} ${H}`}
           width="100%"
           height={H}
-          style={{ display: 'block', cursor: 'crosshair' }}
+          style={{ display: 'block', cursor: 'crosshair', overflow: 'visible' }}
           onMouseMove={handleMove}
           onMouseLeave={() => setHoverIdx(null)}
         >
-          {/* axes */}
-          <line x1={PAD_L} y1={PAD_T} x2={PAD_L} y2={PAD_T + PLOT_H} stroke="#30363d" strokeWidth="0.5" />
-          <line x1={PAD_L} y1={PAD_T + PLOT_H} x2={W - PAD_R} y2={PAD_T + PLOT_H} stroke="#30363d" strokeWidth="0.5" />
+          <defs>
+            <linearGradient id="lsGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#e8c674" stopOpacity="0.9" />
+              <stop offset="100%" stopColor="#e8c674" stopOpacity="0.25" />
+            </linearGradient>
+          </defs>
 
-          {/* y-axis labels */}
-          <text x={PAD_L - 4} y={PAD_T + 4} fontSize="9" fill="#7d8590" textAnchor="end">{fmtTon(maxSpend)} TON</text>
-          <text x={PAD_L - 4} y={PAD_T + PLOT_H / 2 + 3} fontSize="9" fill="#7d8590" textAnchor="end">{fmtTon(maxSpend / 2)}</text>
-          <text x={PAD_L - 4} y={PAD_T + PLOT_H} fontSize="9" fill="#7d8590" textAnchor="end">0</text>
+          {/* gridlines */}
+          <line x1={PAD_L} y1={PAD_T} x2={PAD_L} y2={PAD_T + PLOT_H} stroke="var(--line-faint)" strokeWidth="0.5" />
+          <line x1={PAD_L} y1={PAD_T + PLOT_H} x2={W - PAD_R} y2={PAD_T + PLOT_H} stroke="var(--line-faint)" strokeWidth="0.5" />
+          <line x1={PAD_L} y1={PAD_T + PLOT_H/2} x2={W - PAD_R} y2={PAD_T + PLOT_H/2} stroke="var(--line-faint)" strokeWidth="0.3" strokeDasharray="1 4" />
 
-          {/* month tick marks */}
+          {/* y-axis labels — Fraunces numerals */}
+          <text x={PAD_L - 6} y={PAD_T + 4} fontSize="10" fill="var(--ink-low)" textAnchor="end"
+                fontFamily="JetBrains Mono, monospace">{fmtTon(maxSpend)} TON</text>
+          <text x={PAD_L - 6} y={PAD_T + PLOT_H / 2 + 3} fontSize="10" fill="var(--ink-faint)" textAnchor="end"
+                fontFamily="JetBrains Mono, monospace">{fmtTon(maxSpend / 2)}</text>
+          <text x={PAD_L - 6} y={PAD_T + PLOT_H + 2} fontSize="10" fill="var(--ink-faint)" textAnchor="end"
+                fontFamily="JetBrains Mono, monospace">0</text>
+
+          {/* month ticks */}
           {ticks.map(i => {
             const x = PAD_L + i * barStep;
             return (
               <g key={`tick-${i}`}>
-                <line x1={x} y1={PAD_T + PLOT_H} x2={x} y2={PAD_T + PLOT_H + 4} stroke="#484f58" strokeWidth="0.5" />
-                <text x={x} y={PAD_T + PLOT_H + 14} fontSize="9" fill="#7d8590" textAnchor="middle">
-                  {fmtDate(visible[i].date)}
-                </text>
+                <line x1={x} y1={PAD_T + PLOT_H} x2={x} y2={PAD_T + PLOT_H + 4} stroke="var(--line)" strokeWidth="0.5" />
+                <text x={x} y={PAD_T + PLOT_H + 18} fontSize="9.5" fill="var(--ink-low)" textAnchor="middle"
+                      fontFamily="JetBrains Mono, monospace">{fmtDate(visible[i].date)}</text>
               </g>
             );
           })}
@@ -217,91 +239,109 @@ export default function LifespanChart({ daily, totals }) {
                 y={isActive ? y : PAD_T + PLOT_H - 1}
                 width={barW}
                 height={isActive ? Math.max(h, 1) : 1}
-                fill={isActive ? (isHover ? '#58d468' : '#3fb950') : '#21262d'}
-                opacity={isActive ? (isHover ? 1 : 0.85) : 0.5}
+                fill={isActive ? (isHover ? '#ffd874' : 'url(#lsGrad)') : 'var(--line-faint)'}
+                opacity={isActive ? 1 : 0.6}
+                style={{ transition: 'fill 120ms var(--ease-soft)' }}
               />
             );
           })}
 
-          {/* hover highlight (vertical guide line) */}
+          {/* hover vertical guide */}
           {hoverIdx !== null && (
             <line
               x1={PAD_L + hoverIdx * barStep + barW / 2}
               y1={PAD_T}
               x2={PAD_L + hoverIdx * barStep + barW / 2}
               y2={PAD_T + PLOT_H}
-              stroke="#58a6ff"
+              stroke="var(--ink-mid)"
               strokeWidth="0.5"
               strokeDasharray="2 2"
-              opacity="0.6"
+              opacity="0.4"
             />
           )}
-
-          {/* last-date indicator */}
-          <line
-            x1={PAD_L + (visible.length - 1) * barStep + barW / 2}
-            y1={PAD_T}
-            x2={PAD_L + (visible.length - 1) * barStep + barW / 2}
-            y2={PAD_T + PLOT_H}
-            stroke="#d29922"
-            strokeWidth="0.5"
-            strokeDasharray="1 3"
-            opacity="0.35"
-          />
         </svg>
 
-        {/* hover tooltip */}
+        {/* Hover tooltip */}
         {hovered && (
           <Box
             position="absolute"
-            top="8px"
-            left={`${hoverXpct > 50 ? 0 : Math.min(100 - 24, hoverXpct + 2)}%`}
-            right={hoverXpct > 50 ? `${Math.min(100 - 24, 100 - hoverXpct + 2)}%` : 'auto'}
-            bg="#0d1117"
-            border="1px solid #30363d"
-            borderRadius="8px"
-            p={3}
-            fontSize="11px"
-            color="#c9d1d9"
-            minW="180px"
-            maxW="240px"
-            boxShadow="0 4px 16px rgba(0,0,0,0.4)"
+            top="16px"
+            left={`${hoverXpct > 60 ? 0 : Math.min(100 - 28, hoverXpct + 3)}%`}
+            right={hoverXpct > 60 ? `${Math.min(100 - 28, 100 - hoverXpct + 3)}%` : 'auto'}
+            bg="rgba(7, 8, 10, 0.92)"
+            backdropFilter="blur(8px)"
+            border="1px solid var(--line-strong)"
+            borderRadius="2px"
+            p={4}
+            minW="220px"
+            maxW="280px"
             pointerEvents="none"
+            sx={{ animation: 'fade-up .25s var(--ease-soft) both' }}
           >
-            <Text color="#f0f6fc" fontWeight="600" mb={1} fontFamily="mono" fontSize="12px">
+            <Text
+              fontFamily="var(--ff-display)"
+              fontSize="16px"
+              color="var(--ink-high)"
+              fontWeight="400"
+              mb={3}
+              sx={{ fontVariationSettings: '"opsz" 20, "SOFT" 40', letterSpacing: '-0.01em' }}
+            >
               {fmtDate(hovered.date, { withYear: true })}
             </Text>
-            <HStack justify="space-between" spacing={4}>
-              <Text color="#8b949e">Compute spend</Text>
-              <Text color="#3fb950" fontWeight="500" fontFamily="mono">{hovered.computeSpendTon.toFixed(2)} TON</Text>
-            </HStack>
-            <HStack justify="space-between" spacing={4}>
-              <Text color="#8b949e">Worker revenue</Text>
-              <Text color="#58a6ff" fontWeight="500" fontFamily="mono">{hovered.workerRevenueTon.toFixed(2)} TON</Text>
-            </HStack>
-            <HStack justify="space-between" spacing={4}>
-              <Text color="#8b949e">Commission</Text>
-              <Text color="#d29922" fontWeight="500" fontFamily="mono">
-                {Math.max(0, hovered.computeSpendTon - hovered.workerRevenueTon).toFixed(2)} TON
-              </Text>
-            </HStack>
-            <HStack justify="space-between" spacing={4}>
-              <Text color="#8b949e">Transactions</Text>
-              <Text color="#e6edf3" fontWeight="500" fontFamily="mono">{hovered.computeTxs}</Text>
-            </HStack>
-            <HStack justify="space-between" spacing={4}>
-              <Text color="#8b949e">Tokens (~3x mix)</Text>
-              <Text color="#a371f7" fontWeight="500" fontFamily="mono">{fmtNum(hovered.tokensMix)}</Text>
-            </HStack>
+            <VStack spacing={1.5} align="stretch" fontSize="12px" fontFamily="var(--ff-mono)">
+              <Row k="Compute spend" v={`${hovered.computeSpendTon.toFixed(2)} TON`} tone="var(--honey)" />
+              <Row k="Worker revenue" v={`${hovered.workerRevenueTon.toFixed(2)} TON`} tone="var(--mint)" />
+              <Row k="Delta" v={`${(hovered.workerRevenueTon - hovered.computeSpendTon).toFixed(2)} TON`} tone="var(--ink-mid)" />
+              <Row k="Transactions" v={String(hovered.computeTxs)} />
+              <Row k="Tokens (mix)" v={fmtNum(hovered.tokensMix)} tone="var(--plum)" />
+            </VStack>
           </Box>
         )}
       </Box>
 
       {daysSinceLast >= 2 && (
-        <Text fontSize="11px" color="#d29922" mt={2}>
+        <Text fontSize="12px" color="var(--coral)" mt={4} fontFamily="var(--ff-display)" fontStyle="italic"
+              sx={{ fontVariationSettings: '"opsz" 14, "SOFT" 80' }}>
           ⚠ Last compute activity was {daysSinceLast} days ago — network may be paused.
         </Text>
       )}
     </Box>
+  );
+}
+
+function Stat({ label, big, unit, sub, tone = 'var(--ink-high)' }) {
+  return (
+    <Box>
+      <Text fontSize="10px" fontFamily="var(--ff-body)" letterSpacing="0.22em" textTransform="uppercase"
+            color="var(--ink-low)" fontWeight="500" mb={1}>
+        {label}
+      </Text>
+      <HStack spacing={1} align="baseline">
+        <Text fontFamily="var(--ff-display)" fontSize={{ base: '22px', md: '28px' }} color={tone} fontWeight="400"
+              sx={{ fontVariationSettings: '"opsz" 48, "SOFT" 30', letterSpacing: '-0.015em', lineHeight: 1 }}>
+          {big}
+        </Text>
+        {unit && (
+          <Text fontSize="12px" color="var(--ink-low)" fontFamily="var(--ff-body)">
+            {unit}
+          </Text>
+        )}
+      </HStack>
+      {sub && (
+        <Text fontFamily="var(--ff-display)" fontStyle="italic" fontSize="11px" color="var(--ink-low)"
+              sx={{ fontVariationSettings: '"opsz" 12, "SOFT" 80' }} mt={1}>
+          {sub}
+        </Text>
+      )}
+    </Box>
+  );
+}
+
+function Row({ k, v, tone = 'var(--ink-high)' }) {
+  return (
+    <HStack justify="space-between" spacing={5}>
+      <Text color="var(--ink-low)">{k}</Text>
+      <Text color={tone} fontWeight="500">{v}</Text>
+    </HStack>
   );
 }

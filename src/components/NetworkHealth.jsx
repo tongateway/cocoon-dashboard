@@ -1,4 +1,4 @@
-import { Box, HStack, Text } from '@chakra-ui/react';
+import { Box, HStack, Text, VStack } from '@chakra-ui/react';
 import { networkHealth } from '../lib/rateMath';
 
 function fmtDur(sec) {
@@ -9,65 +9,152 @@ function fmtDur(sec) {
   return `${Math.floor(sec / 86400)}d`;
 }
 
-const BG = {
-  healthy: 'rgba(63,185,80,0.08)',
-  quiet:   'rgba(210,153,34,0.08)',
-  stalled: 'rgba(240,136,62,0.1)',
-  dormant: 'rgba(248,81,73,0.1)',
-};
-
-const BORDER = {
-  healthy: 'rgba(63,185,80,0.4)',
-  quiet:   'rgba(210,153,34,0.4)',
-  stalled: 'rgba(240,136,62,0.5)',
-  dormant: 'rgba(248,81,73,0.5)',
-};
-
-const DESCRIPTIONS = {
-  healthy: 'Cocoon is actively processing inference requests.',
-  quiet:   'Some activity in the last hour but nothing in the last 5 minutes.',
-  stalled: 'No activity in the last hour. The network may be paused.',
-  dormant: 'No activity in the last 24 hours. Check worker/proxy availability.',
+const STATES = {
+  healthy: {
+    glyph: '◆',
+    tint: 'var(--mint)',
+    wash: 'linear-gradient(100deg, rgba(130, 213, 167, 0.1), rgba(130, 213, 167, 0.02) 60%, transparent)',
+    blurb: 'Network is processing inference in real time.',
+  },
+  quiet: {
+    glyph: '◈',
+    tint: 'var(--honey)',
+    wash: 'linear-gradient(100deg, rgba(232, 198, 116, 0.1), rgba(232, 198, 116, 0.02) 60%, transparent)',
+    blurb: 'Some activity in the last hour; nothing in the last five minutes.',
+  },
+  stalled: {
+    glyph: '◇',
+    tint: 'var(--coral)',
+    wash: 'linear-gradient(100deg, rgba(245, 139, 124, 0.08), rgba(245, 139, 124, 0.02) 60%, transparent)',
+    blurb: 'No transactions in the last hour. The network may be paused.',
+  },
+  dormant: {
+    glyph: '○',
+    tint: 'var(--coral)',
+    wash: 'linear-gradient(100deg, rgba(245, 139, 124, 0.08), rgba(245, 139, 124, 0.02) 60%, transparent)',
+    blurb: 'No activity in the last 24 hours. Check worker and proxy availability.',
+  },
 };
 
 // eslint-disable-next-line no-unused-vars
 export default function NetworkHealth({ bufferRef, bufferVersion }) {
   const h = networkHealth(bufferRef.items());
-  const desc = DESCRIPTIONS[h.status];
-
-  const lastTxStr = h.lastTxAgoSec == null ? 'no transactions in buffer' : `last tx ${fmtDur(h.lastTxAgoSec)} ago`;
-  const hourStr = `${h.last1hCount} tx${h.last1hCount === 1 ? '' : 's'} in last hour`;
-  const olderStr = h.lastOlderActivityAgoSec != null
-    ? `previous activity ${fmtDur(h.lastOlderActivityAgoSec)} ago`
-    : null;
-
-  const summary = [lastTxStr, hourStr, olderStr].filter(Boolean).join(' · ');
+  const state = STATES[h.status];
 
   return (
     <Box
-      bg={BG[h.status]}
-      border="1px solid"
-      borderColor={BORDER[h.status]}
-      borderRadius="12px"
-      p={4}
+      position="relative"
+      borderTop="1px solid var(--line)"
+      borderBottom="1px solid var(--line)"
+      py={{ base: 7, md: 10 }}
+      px={{ base: 1, md: 2 }}
+      overflow="hidden"
+      className="fade-up"
     >
-      <HStack spacing={3} align="center" mb={2} flexWrap="wrap">
-        <Box w="10px" h="10px" borderRadius="full" bg={h.color}
-             boxShadow={h.status === 'healthy' ? '0 0 8px rgba(63,185,80,0.6)' : 'none'}
-             sx={h.status === 'healthy' ? {
-               animation: 'pulse-nh 1.4s infinite',
-               '@keyframes pulse-nh': {
-                 '0%': { boxShadow: '0 0 0 0 rgba(63,185,80,0.6)' },
-                 '70%': { boxShadow: '0 0 0 12px rgba(63,185,80,0)' },
-                 '100%': { boxShadow: '0 0 0 0 rgba(63,185,80,0)' }
-               }
-             } : {}} />
-        <Text fontSize="22px" fontWeight="700" color={h.color} lineHeight="1" textTransform="uppercase" letterSpacing="0.02em">
-          {h.label}
-        </Text>
-        <Text fontSize="13px" color="#c9d1d9">— {desc}</Text>
+      {/* washing glow tint matched to state */}
+      <Box position="absolute" inset={0} pointerEvents="none" bg={state.wash} />
+
+      <HStack align="flex-start" spacing={{ base: 4, md: 8 }} position="relative">
+        {/* Big state glyph with glow */}
+        <Box
+          w={{ base: '42px', md: '56px' }}
+          h={{ base: '42px', md: '56px' }}
+          borderRadius="50%"
+          bg="rgba(0, 0, 0, 0.3)"
+          border="1px solid var(--line-strong)"
+          display="flex"
+          alignItems="center"
+          justifyContent="center"
+          flexShrink={0}
+          color={state.tint}
+          fontSize={{ base: '20px', md: '26px' }}
+          sx={{
+            boxShadow: h.status === 'healthy' ? `0 0 32px ${state.tint}40` : 'none',
+            animation: h.status === 'healthy' ? 'pulse-halo 2.4s infinite var(--ease-soft)' : 'none',
+          }}
+        >
+          {state.glyph}
+        </Box>
+
+        <VStack align="stretch" spacing={2} flex={1}>
+          <Text
+            fontSize="11px"
+            fontFamily="var(--ff-mono)"
+            letterSpacing="0.24em"
+            textTransform="uppercase"
+            color="var(--ink-low)"
+            fontWeight="500"
+          >
+            § I · Status Report
+          </Text>
+
+          <Box
+            fontFamily="var(--ff-display)"
+            fontSize={{ base: '42px', md: '68px', lg: '84px' }}
+            color={state.tint}
+            fontWeight="300"
+            sx={{
+              fontVariationSettings: '"opsz" 144, "SOFT" 20',
+              letterSpacing: '-0.03em',
+              lineHeight: 0.95,
+            }}
+          >
+            {h.label}
+          </Box>
+
+          <Text
+            mt={1}
+            fontFamily="var(--ff-display)"
+            fontStyle="italic"
+            fontSize={{ base: '16px', md: '20px' }}
+            color="var(--ink-mid)"
+            sx={{ fontVariationSettings: '"opsz" 24, "SOFT" 80' }}
+            letterSpacing="-0.005em"
+          >
+            {state.blurb}
+          </Text>
+
+          <HStack
+            spacing={{ base: 4, md: 8 }}
+            flexWrap="wrap"
+            mt={4}
+            fontFamily="var(--ff-mono)"
+            fontSize="11px"
+            color="var(--ink-mid)"
+            letterSpacing="-0.005em"
+          >
+            <Fact label="Last tx" value={h.lastTxAgoSec == null ? '—' : `${fmtDur(h.lastTxAgoSec)} ago`} emphasis={state.tint} />
+            <Fact label="Last hour" value={`${h.last1hCount} tx${h.last1hCount === 1 ? '' : 's'}`} />
+            {h.lastOlderActivityAgoSec != null && (
+              <Fact label="Prior activity" value={`${fmtDur(h.lastOlderActivityAgoSec)} ago`} muted />
+            )}
+          </HStack>
+        </VStack>
       </HStack>
-      <Text fontSize="12px" color="#8b949e" fontFamily="mono">{summary}</Text>
     </Box>
+  );
+}
+
+function Fact({ label, value, emphasis, muted }) {
+  return (
+    <HStack spacing={2} align="baseline">
+      <Text
+        fontSize="10px"
+        textTransform="uppercase"
+        letterSpacing="0.2em"
+        color="var(--ink-faint)"
+        fontWeight="500"
+      >
+        {label}
+      </Text>
+      <Text
+        fontSize="13px"
+        color={emphasis || (muted ? 'var(--ink-low)' : 'var(--ink-high)')}
+        fontFamily="var(--ff-mono)"
+        fontWeight="500"
+      >
+        {value}
+      </Text>
+    </HStack>
   );
 }
