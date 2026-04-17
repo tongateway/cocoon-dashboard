@@ -49,3 +49,20 @@ export function classifyCocoonContract(accountInfo) {
 
   return 'unknown';
 }
+
+const TONAPI_BASE = 'https://tonapi.io/v2';
+const TONAPI_TOKEN = import.meta.env.VITE_TONAPI_TOKEN || '';
+
+export function sseUrl(accounts) {
+  const csv = encodeURIComponent(accounts.join(','));
+  return `${TONAPI_BASE}/sse/accounts/transactions?accounts=${csv}`;
+}
+
+export function sseHeaders() {
+  return TONAPI_TOKEN ? { Authorization: `Bearer ${TONAPI_TOKEN}` } : {};
+}
+
+export async function fetchTransactionByHash(hash) {
+  const res = await client.get(`/blockchain/transactions/${hash}`);
+  return res.data;
+}
