@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 
 import { fetchDiscovery } from '../api/backend';
 import { useLiveFeed } from './useLiveFeed';
+import { parseTxOpcode } from '../lib/opcodes';
 import { DISCOVERY_INTERVAL_MS } from '../constants';
 
 const ACTIVE_WINDOW_MS = 60 * 60 * 1000; // 1h — fixed per spec
@@ -54,7 +55,14 @@ export function useNetworkData() {
       const raw = await fetchDiscovery();
       const g = buildGraph(raw);
       setGraph(g);
-      seedRef.current = g.seedTxs.map(tx => tagRole(g, tx));
+      seedRef.current = g.seedTxs.map(tx => {
+        tagRole(g, tx);
+        if (!tx._op) {
+          const op = parseTxOpcode(tx);
+          if (op) tx._op = op.name;
+        }
+        return tx;
+      });
       setLastRefresh(new Date());
       setError(null);
       setLoading(false);

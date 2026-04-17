@@ -37,6 +37,7 @@ function Dashboard({ data, error }) {
           isAlive={isAlive} lastTxUtime={lastTxUtime}
           bufferRef={buffer} bufferVersion={bufferVersion}
           pricePerToken={graph.pricePerToken}
+          computeMetricsTotals={graph.computeMetrics?.totals}
           window={windowId} onWindowChange={setWindowId}
         />
 

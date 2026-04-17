@@ -47,17 +47,20 @@ function bucketSparkline(txs, valueFn, bucketMs = 60 * 60 * 1000, buckets = 24) 
 
 export default function LiveHero({
   isAlive, lastTxUtime, bufferRef, bufferVersion, pricePerToken = 20, // eslint-disable-line no-unused-vars
-  window: windowId, onWindowChange,
+  window: windowId, onWindowChange, computeMetricsTotals,
 }) {
   const w = WINDOWS.find(x => x.id === windowId) || WINDOWS[0];
   const allTxs = bufferRef.items();
   const windowTxs = isFinite(w.ms) ? inWindow(allTxs, w.ms) : allTxs;
   const last24h = inWindow(allTxs, 24 * 60 * 60 * 1000);
 
-  const spend = computeSpend(windowTxs);
-  const rev = workerRevenue(windowTxs);
-  const com = commission(windowTxs);
-  const tok = tokensProcessed(windowTxs, pricePerToken);
+  // For "All" we use the worker's pre-computed totals (covers full history,
+  // not limited by the 2000-item buffer cap). For other windows we sum the buffer.
+  const useTotals = windowId === 'all' && computeMetricsTotals;
+  const spend = useTotals ? Math.round(computeMetricsTotals.computeSpendTon * 1e9) : computeSpend(windowTxs);
+  const rev = useTotals ? Math.round(computeMetricsTotals.workerRevenueTon * 1e9) : workerRevenue(windowTxs);
+  const com = useTotals ? Math.max(0, spend - rev) : commission(windowTxs);
+  const tok = useTotals ? (computeMetricsTotals.tokensMix || 0) : tokensProcessed(windowTxs, pricePerToken);
 
   const spendHourly = asHourlyRate(spend, w.ms);
   const revHourly = asHourlyRate(rev, w.ms);
