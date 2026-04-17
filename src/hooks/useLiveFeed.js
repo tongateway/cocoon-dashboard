@@ -1,7 +1,17 @@
 import { useEffect, useState } from 'react';
-import { Buffer } from 'buffer';
 import { sseUrl, fetchTransactionByHash } from '../api/tonapi';
 import { parseTxOpcode } from '../lib/opcodes';
+
+// Pure-browser hex → base64 (no Buffer/Node polyfill needed).
+function hexToBase64(hex) {
+  if (!hex) return '';
+  const clean = hex.length % 2 === 0 ? hex : '0' + hex;
+  let bin = '';
+  for (let i = 0; i < clean.length; i += 2) {
+    bin += String.fromCharCode(parseInt(clean.slice(i, i + 2), 16));
+  }
+  return btoa(bin);
+}
 
 // Exported for tests — do not import into components directly.
 export function __makeBuffer(capacity) {
@@ -108,11 +118,10 @@ export function useLiveFeed({ accounts, seed = [], onFallback }) {
 
 function normalizeTonapiTx(tonapiTx, accountId) {
   // Map tonapi's transaction shape to the toncenter shape used by rateMath/txClassify.
-  const inMsgHex = tonapiTx.in_msg?.raw_body;
-  const inMsgBase64 = inMsgHex ? Buffer.from(inMsgHex, 'hex').toString('base64') : '';
+  const inMsgBase64 = hexToBase64(tonapiTx.in_msg?.raw_body);
   const opInfo = parseTxOpcode({
     in_msg: { msg_data: { body: inMsgBase64 } },
-    out_msgs: (tonapiTx.out_msgs || []).map(m => ({ msg_data: { body: m.raw_body ? Buffer.from(m.raw_body, 'hex').toString('base64') : '' } })),
+    out_msgs: (tonapiTx.out_msgs || []).map(m => ({ msg_data: { body: hexToBase64(m.raw_body) } })),
   });
   return {
     utime: tonapiTx.utime,
@@ -127,7 +136,7 @@ function normalizeTonapiTx(tonapiTx, accountId) {
     out_msgs: (tonapiTx.out_msgs || []).map(m => ({
       destination: m.destination?.address || '',
       value: String(m.value || 0),
-      msg_data: { body: m.raw_body ? Buffer.from(m.raw_body, 'hex').toString('base64') : '' },
+      msg_data: { body: hexToBase64(m.raw_body) },
     })),
     _op: opInfo?.name || null,
     contractRole: null, // filled in by useNetworkData using graph lookup
