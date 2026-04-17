@@ -17,3 +17,23 @@ export function computeSpend(txs) {
   }
   return total;
 }
+
+export function workerRevenue(txs) {
+  let total = 0;
+  for (const tx of txs) {
+    const inVal = parseInt(tx.in_msg?.value || '0', 10);
+    if (tx.contractRole === 'cocoon_worker' && opName(tx) === 'ext_worker_payout_signed' && inVal > 0) {
+      total += inVal;
+    }
+  }
+  return total;
+}
+
+export function commission(txs) {
+  return Math.max(0, computeSpend(txs) - workerRevenue(txs));
+}
+
+export function tokensProcessed(txs, pricePerToken = 20) {
+  if (!pricePerToken || pricePerToken <= 0) return 0;
+  return Math.round(computeSpend(txs) / pricePerToken);
+}
