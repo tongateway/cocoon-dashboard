@@ -2,11 +2,11 @@ import { Box, HStack, VStack, Text, Grid, Button, Link } from '@chakra-ui/react'
 import { Link as RouterLink } from 'react-router-dom';
 
 const ROLE_META = {
-  root:           { label: 'Root',         color: '#f57520', bg: 'rgba(245,117,32,0.18)', border: 'rgba(245,117,32,0.35)' },
-  cocoon_proxy:   { label: 'Proxy',        color: '#a371f7', bg: 'rgba(163,113,247,0.18)', border: 'rgba(163,113,247,0.35)' },
-  cocoon_client:  { label: 'Client',       color: '#58a6ff', bg: 'rgba(88,166,255,0.18)', border: 'rgba(88,166,255,0.35)' },
-  cocoon_worker:  { label: 'Worker',       color: '#d29922', bg: 'rgba(210,153,34,0.18)', border: 'rgba(210,153,34,0.35)' },
-  cocoon_wallet:  { label: 'Cocoon wallet',color: '#3fb950', bg: 'rgba(63,185,80,0.18)', border: 'rgba(63,185,80,0.35)' },
+  root:           { label: 'Root',          color: 'var(--honey)' },
+  cocoon_proxy:   { label: 'Proxy',         color: 'var(--plum)' },
+  cocoon_client:  { label: 'Client',        color: 'var(--dusk)' },
+  cocoon_worker:  { label: 'Worker',        color: 'var(--honey)' },
+  cocoon_wallet:  { label: 'Cocoon wallet', color: 'var(--mint)' },
 };
 
 function short(addr) { return addr ? `${addr.slice(0, 6)}…${addr.slice(-4)}` : ''; }
@@ -47,70 +47,115 @@ export default function ResultCard({ address, classification, graph, onDismiss }
       relationship = `Root contract — stores network config, proxy registry, and allowed code hashes`;
     }
   } else {
-    relationship = `This address has no interaction with Cocoon contracts.`;
+    relationship = `No interaction with Cocoon contracts. This is an external address.`;
   }
+
+  const verdict = isCocoon ? 'Cocoon' : 'External';
+  const tint = isCocoon ? 'var(--honey)' : 'var(--ink-low)';
 
   return (
     <Box
-      bg={isCocoon ? 'linear-gradient(180deg, rgba(63,185,80,0.05), #161b22 60%)' : '#161b22'}
-      border="1px solid"
-      borderColor={isCocoon ? 'rgba(63,185,80,0.4)' : '#30363d'}
-      borderRadius="12px" p={4} mb={4}
+      position="relative"
+      borderTop="1px solid var(--line)"
+      borderBottom="1px solid var(--line)"
+      py={6}
+      px={{ base: 4, md: 6 }}
+      bg={isCocoon ? 'rgba(232, 198, 116, 0.03)' : 'rgba(0, 0, 0, 0.15)'}
+      className="fade-up"
     >
-      <Grid templateColumns="auto 1fr auto" gap={4} alignItems="start">
-        <Box w="56px" h="56px" borderRadius="12px" display="flex" alignItems="center" justifyContent="center"
-             fontSize="24px" fontWeight="700"
-             bg={isCocoon ? 'rgba(63,185,80,0.2)' : 'rgba(139,148,158,0.1)'}
-             color={isCocoon ? '#3fb950' : '#8b949e'}>
-          {isCocoon ? '✓' : '?'}
-        </Box>
+      <Grid templateColumns={{ base: '1fr', md: '1fr auto' }} gap={6} alignItems="flex-start">
         <Box>
-          <HStack>
-            <Box as="span" px={2} py={0.5} borderRadius="999px" fontSize="10px" fontWeight="600"
-                 textTransform="uppercase" letterSpacing="0.04em"
-                 bg={isCocoon ? 'rgba(63,185,80,0.2)' : 'rgba(139,148,158,0.15)'}
-                 color={isCocoon ? '#3fb950' : '#8b949e'}
-                 border={`1px solid ${isCocoon ? 'rgba(63,185,80,0.45)' : 'rgba(139,148,158,0.35)'}`}>
-              {isCocoon ? 'COCOON' : 'NOT COCOON'}
+          {/* Verdict line — editorial */}
+          <HStack spacing={3} align="baseline" flexWrap="wrap" mb={2}>
+            <Text
+              fontSize="10px"
+              fontFamily="var(--ff-body)"
+              letterSpacing="0.24em"
+              textTransform="uppercase"
+              color="var(--ink-low)"
+              fontWeight="500"
+            >
+              Verdict
+            </Text>
+            <Box
+              fontFamily="var(--ff-display)"
+              fontSize={{ base: '28px', md: '34px' }}
+              color={tint}
+              fontWeight="300"
+              sx={{
+                fontVariationSettings: '"opsz" 72, "SOFT" 30',
+                letterSpacing: '-0.02em',
+                lineHeight: 1,
+              }}
+            >
+              {verdict}
             </Box>
             {meta && (
-              <Box as="span" px={2} py={0.5} borderRadius="999px" fontSize="10px" fontWeight="600"
-                   textTransform="uppercase" letterSpacing="0.04em"
-                   bg={meta.bg} color={meta.color} border={`1px solid ${meta.border}`}>
-                {meta.label}
-              </Box>
+              <Text
+                fontFamily="var(--ff-display)"
+                fontStyle="italic"
+                fontSize={{ base: '18px', md: '22px' }}
+                color={meta.color}
+                sx={{ fontVariationSettings: '"opsz" 48, "SOFT" 100' }}
+              >
+                — {meta.label}
+              </Text>
             )}
           </HStack>
-          <Text fontFamily="mono" fontSize="12px" color="#58a6ff" mt={1} wordBreak="break-all">{address}</Text>
-          <Text fontSize="12px" color="#8b949e" mt={3} p={2} bg="#0d1117" borderRadius="6px"
-                border="1px dashed #30363d">
+
+          {/* Address */}
+          <Text
+            fontFamily="var(--ff-mono)"
+            fontSize="12px"
+            color="var(--ink-mid)"
+            wordBreak="break-all"
+            mb={3}
+          >
+            {address}
+          </Text>
+
+          {/* Relationship blurb */}
+          <Text
+            fontFamily="var(--ff-display)"
+            fontStyle="italic"
+            fontSize="14px"
+            color="var(--ink-mid)"
+            sx={{ fontVariationSettings: '"opsz" 18, "SOFT" 80' }}
+            mb={4}
+          >
             {relationship}
           </Text>
-          <Grid templateColumns="repeat(4, 1fr)" gap={3} mt={3} pt={3} borderTop="1px solid #30363d">
+
+          {/* Facts */}
+          <Grid
+            templateColumns={{ base: 'repeat(2, 1fr)', md: 'repeat(4, 1fr)' }}
+            gap={4}
+            pt={3}
+            borderTop="1px solid var(--line-faint)"
+          >
             <Fact k="Balance" v={`${(parseInt(balance || '0', 10) / 1e9).toFixed(2)} TON`} />
-            <Fact k="State" v={state || '—'} color={state === 'active' ? '#3fb950' : '#e6edf3'} />
+            <Fact k="State" v={state || '—'} tone={state === 'active' ? 'var(--mint)' : 'var(--ink-high)'} />
             <Fact k="Last activity" v={ago(lastActivity)} />
-            <Fact k="Code hash" v={codeHash ? `${codeHash.slice(0, 4)}…${codeHash.slice(-4)}` : '—'}
-                  fontFamily="mono" />
+            <Fact k="Code hash" v={codeHash ? `${codeHash.slice(0, 4)}…${codeHash.slice(-4)}` : '—'} mono />
           </Grid>
         </Box>
-        <VStack spacing={1} align="stretch">
+
+        {/* Action column */}
+        <VStack spacing={2} align="stretch" minW={{ md: '180px' }}>
           {isCocoon && (
-            <Button as={RouterLink} to={`/address/${address}`} size="sm"
-                    bg="#238636" color="white" _hover={{ bg: '#2ea043' }}>
-              View details →
-            </Button>
+            <InkButton as={RouterLink} to={`/address/${address}`} primary>
+              Open file →
+            </InkButton>
           )}
-          <Button size="sm" variant="outline" borderColor="#30363d" color="#c9d1d9"
-                  onClick={() => navigator.clipboard.writeText(address)}>
+          <InkButton onClick={() => navigator.clipboard.writeText(address)}>
             Copy address
-          </Button>
-          <Link href={`https://tonviewer.com/${address}`} isExternal>
-            <Button size="sm" variant="outline" borderColor="#30363d" color="#c9d1d9" w="full">
-              Tonviewer ↗
-            </Button>
+          </InkButton>
+          <Link href={`https://tonviewer.com/${address}`} isExternal _hover={{ textDecoration: 'none' }}>
+            <InkButton w="full" as="div">Tonviewer ↗</InkButton>
           </Link>
-          <Button size="xs" variant="ghost" color="#7d8590" onClick={onDismiss}>
+          <Button size="xs" variant="ghost" color="var(--ink-faint)" fontFamily="var(--ff-mono)"
+                  fontSize="10px" letterSpacing="0.18em" textTransform="uppercase"
+                  _hover={{ color: 'var(--coral)', bg: 'transparent' }} onClick={onDismiss}>
             ✕ Dismiss
           </Button>
         </VStack>
@@ -119,11 +164,56 @@ export default function ResultCard({ address, classification, graph, onDismiss }
   );
 }
 
-function Fact({ k, v, color = '#e6edf3', fontFamily = 'inherit' }) {
+function Fact({ k, v, tone = 'var(--ink-high)', mono = false }) {
   return (
     <Box>
-      <Text fontSize="10px" textTransform="uppercase" color="#7d8590" letterSpacing="0.08em">{k}</Text>
-      <Text fontSize="14px" color={color} mt={1} fontWeight="500" fontFamily={fontFamily}>{v}</Text>
+      <Text
+        fontSize="10px"
+        textTransform="uppercase"
+        color="var(--ink-faint)"
+        letterSpacing="0.18em"
+        fontFamily="var(--ff-body)"
+        fontWeight="500"
+        mb={1}
+      >
+        {k}
+      </Text>
+      <Text
+        fontSize="15px"
+        color={tone}
+        fontFamily={mono ? 'var(--ff-mono)' : 'var(--ff-display)'}
+        fontWeight="400"
+        sx={{ fontVariationSettings: '"opsz" 24, "SOFT" 20' }}
+      >
+        {v}
+      </Text>
     </Box>
+  );
+}
+
+function InkButton({ children, primary, ...rest }) {
+  return (
+    <Button
+      size="sm"
+      height="36px"
+      borderRadius="2px"
+      border="1px solid"
+      borderColor={primary ? 'var(--honey)' : 'var(--line)'}
+      bg={primary ? 'var(--honey)' : 'transparent'}
+      color={primary ? 'var(--bg-void)' : 'var(--ink-mid)'}
+      fontFamily="var(--ff-mono)"
+      fontSize="11px"
+      fontWeight="500"
+      letterSpacing="0.08em"
+      _hover={{
+        bg: primary ? 'var(--honey-lo)' : 'rgba(232, 198, 116, 0.08)',
+        borderColor: primary ? 'var(--honey-lo)' : 'var(--honey)',
+        color: primary ? 'var(--bg-void)' : 'var(--honey)',
+      }}
+      sx={{ transition: 'all 150ms var(--ease-soft)' }}
+      {...rest}
+    >
+      {children}
+    </Button>
   );
 }
