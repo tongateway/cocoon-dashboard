@@ -10,7 +10,8 @@ const CODE_TYPES = {
   '8641e3b7669e0366': 'cocoon_worker',
   '2051342c307e220a': 'cocoon_wallet',
   '9bd714dcc1ff9058': 'cocoon_wallet',
-  '51d730a6efdfe50c': 'cocoon_wallet',
+  // '51d730a6efdfe50c' is Telegram's wallet_highload_v3r1 — NOT a Cocoon wallet
+  // (removed after user report; previously mis-classified 778 public wallets as cocoon_wallets)
 };
 
 function b64ToBytes(str) {
