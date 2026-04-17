@@ -1,0 +1,99 @@
+name: Setup custom domain (one-shot)
+
+on:
+  workflow_dispatch:
+    inputs:
+      domain:
+        description: 'Custom domain to attach (e.g. cocoon.agentmeme.ai)'
+        required: true
+        default: 'cocoon.agentmeme.ai'
+      zone:
+        description: 'Zone name for DNS record (e.g. agentmeme.ai)'
+        required: true
+        default: 'agentmeme.ai'
+      project:
+        description: 'Cloudflare Pages project name'
+        required: true
+        default: 'cocoon-dashboard'
+
+jobs:
+  attach:
+    name: Attach domain + DNS
+    runs-on: ubuntu-latest
+    steps:
+      - name: Attach custom domain to Pages project
+        env:
+          CF_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          DOMAIN: ${{ inputs.domain }}
+          PROJECT: ${{ inputs.project }}
+        run: |
+          echo "→ Attaching $DOMAIN to Pages project '$PROJECT'"
+          RESP=$(curl -sS -w "\nHTTP %{http_code}" -X POST \
+            "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT_ID/pages/projects/$PROJECT/domains" \
+            -H "Authorization: Bearer $CF_API_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{\"name\":\"$DOMAIN\"}")
+          echo "$RESP"
+          # Accept 200 (new) or 409 (already attached)
+          CODE=$(echo "$RESP" | tail -1 | awk '{print $2}')
+          if [ "$CODE" = "200" ] || [ "$CODE" = "409" ]; then
+            echo "✓ Domain attached (HTTP $CODE)"
+          else
+            echo "✗ Unexpected status"
+            exit 1
+          fi
+
+      - name: Resolve zone ID
+        id: zone
+        env:
+          CF_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ZONE: ${{ inputs.zone }}
+        run: |
+          echo "→ Looking up zone ID for $ZONE"
+          ZONE_ID=$(curl -sS "https://api.cloudflare.com/client/v4/zones?name=$ZONE" \
+            -H "Authorization: Bearer $CF_API_TOKEN" | jq -r '.result[0].id // empty')
+          if [ -z "$ZONE_ID" ]; then
+            echo "✗ Zone '$ZONE' not found on this account or token lacks Zone:Read"
+            exit 1
+          fi
+          echo "✓ Zone ID: $ZONE_ID"
+          echo "zone_id=$ZONE_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Add CNAME record
+        env:
+          CF_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ZONE_ID: ${{ steps.zone.outputs.zone_id }}
+          DOMAIN: ${{ inputs.domain }}
+          ZONE: ${{ inputs.zone }}
+        run: |
+          # Host = domain minus the zone suffix (e.g. "cocoon.agentmeme.ai" in zone "agentmeme.ai" → "cocoon")
+          HOST="${DOMAIN%.${ZONE}}"
+          CONTENT="cocoon-dashboard-7zq.pages.dev"
+          echo "→ Adding CNAME $HOST.$ZONE → $CONTENT"
+          RESP=$(curl -sS -w "\nHTTP %{http_code}" -X POST \
+            "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/dns_records" \
+            -H "Authorization: Bearer $CF_API_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{\"type\":\"CNAME\",\"name\":\"$HOST\",\"content\":\"$CONTENT\",\"proxied\":true,\"ttl\":1}")
+          echo "$RESP"
+          CODE=$(echo "$RESP" | tail -1 | awk '{print $2}')
+          # 200 = new; 400 = probably already exists (CF returns 400 on duplicate)
+          if [ "$CODE" = "200" ] || [ "$CODE" = "400" ]; then
+            echo "✓ CNAME set or already existed (HTTP $CODE)"
+          else
+            echo "✗ Unexpected status"
+            exit 1
+          fi
+
+      - name: Report final status
+        env:
+          DOMAIN: ${{ inputs.domain }}
+        run: |
+          echo ""
+          echo "==========================================="
+          echo "  Custom domain setup complete"
+          echo "==========================================="
+          echo "  URL: https://$DOMAIN"
+          echo "  SSL cert usually provisions in 1-2 min"
+          echo "==========================================="
