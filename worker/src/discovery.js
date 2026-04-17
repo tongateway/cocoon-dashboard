@@ -213,6 +213,15 @@ export async function runDiscovery(tc, kv, rootContract) {
     },
   };
 
+  // 8. Truncate raw tx list to the most recent 800 so the payload fits KV's 25MB limit.
+  // Historical aggregates are preserved in computeMetrics.daily (already computed from all txs).
+  const MAX_TXS_IN_CACHE = 800;
+  if (result.transactions.length > MAX_TXS_IN_CACHE) {
+    const dropped = result.transactions.length - MAX_TXS_IN_CACHE;
+    result.transactions = result.transactions.slice(0, MAX_TXS_IN_CACHE);
+    console.log(`[discover] truncated ${dropped} older txs from payload (kept newest ${MAX_TXS_IN_CACHE})`);
+  }
+
   console.log(`[discover] compute: ${result.computeMetrics.totals.computeSpendTon.toFixed(2)} TON spent, ~${formatNum(result.computeMetrics.totals.tokensMix)} tokens (mix)`);
   console.log(`[discover] done: ${result.proxies.length}P ${result.clients.length}C ${result.workers.length}W ${result.cocoonWallets.length}CW`);
   return result;

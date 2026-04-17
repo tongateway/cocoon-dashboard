@@ -49,24 +49,36 @@ function Donut({ slices }) {
 }
 
 // eslint-disable-next-line no-unused-vars
-export default function TrendCharts({ bufferRef, bufferVersion, window: windowId }) {
+export default function TrendCharts({ bufferRef, bufferVersion, window: windowId, computeMetrics }) {
   const w = WINDOWS.find(x => x.id === windowId) || WINDOWS[0];
   const windowMs = isFinite(w.ms) ? w.ms : 30 * 24 * 60 * 60 * 1000; // "all" renders last 30d
   const allTxs = bufferRef.items();
   const windowTxs = inWindow(allTxs, windowMs);
 
-  const buckets = windowId === '1h' ? 30 : windowId === '24h' ? 24 : windowId === '7d' ? 24 * 7 : 30;
-  const spendBuckets = bucket(windowTxs, windowMs, buckets, tx =>
-    (tx.contractRole === 'cocoon_proxy' && tx._op === 'client_proxy_request') ||
-    (tx.contractRole === 'cocoon_client' && tx._op === 'ext_client_charge_signed')
-      ? parseInt(tx.in_msg?.value || '0', 10) / 1e9 : 0);
-  const revBuckets = bucket(windowTxs, windowMs, buckets, tx =>
-    tx.contractRole === 'cocoon_worker' && tx._op === 'ext_worker_payout_signed'
-      ? parseInt(tx.in_msg?.value || '0', 10) / 1e9 : 0);
+  const isAll = windowId === 'all';
+  const dailySeries = isAll ? (computeMetrics?.daily || []) : [];
 
-  const spend = computeSpend(windowTxs) / 1e9;
-  const rev = workerRevenue(windowTxs) / 1e9;
-  const com = commission(windowTxs) / 1e9;
+  let spendBuckets, revBuckets, spend, rev, com;
+  if (isAll && dailySeries.length > 0) {
+    // Use pre-computed daily aggregates (covers full tracked history, not limited by buffer)
+    spendBuckets = dailySeries.map(d => d.computeSpendTon || 0);
+    revBuckets = dailySeries.map(d => d.workerRevenueTon || 0);
+    spend = computeMetrics.totals?.computeSpendTon || 0;
+    rev = computeMetrics.totals?.workerRevenueTon || 0;
+    com = Math.max(0, spend - rev);
+  } else {
+    const buckets = windowId === '1h' ? 30 : windowId === '24h' ? 24 : windowId === '7d' ? 24 * 7 : 30;
+    spendBuckets = bucket(windowTxs, windowMs, buckets, tx =>
+      (tx.contractRole === 'cocoon_proxy' && tx._op === 'client_proxy_request') ||
+      (tx.contractRole === 'cocoon_client' && tx._op === 'ext_client_charge_signed')
+        ? parseInt(tx.in_msg?.value || '0', 10) / 1e9 : 0);
+    revBuckets = bucket(windowTxs, windowMs, buckets, tx =>
+      tx.contractRole === 'cocoon_worker' && tx._op === 'ext_worker_payout_signed'
+        ? parseInt(tx.in_msg?.value || '0', 10) / 1e9 : 0);
+    spend = computeSpend(windowTxs) / 1e9;
+    rev = workerRevenue(windowTxs) / 1e9;
+    com = commission(windowTxs) / 1e9;
+  }
 
   return (
     <Grid templateColumns={{ base: '1fr', lg: '2fr 1fr' }} gap={3}>

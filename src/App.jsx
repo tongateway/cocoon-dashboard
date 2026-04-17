@@ -41,7 +41,7 @@ function Dashboard({ data, error }) {
           window={windowId} onWindowChange={setWindowId}
         />
 
-        <TrendCharts bufferRef={buffer} bufferVersion={bufferVersion} window={windowId} />
+        <TrendCharts bufferRef={buffer} bufferVersion={bufferVersion} window={windowId} computeMetrics={graph.computeMetrics} />
 
         <ActorsPanel graph={graph} bufferRef={buffer} bufferVersion={bufferVersion} />
 
