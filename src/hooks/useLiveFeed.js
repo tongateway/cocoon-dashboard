@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Buffer } from 'buffer';
 import { sseUrl, fetchTransactionByHash } from '../api/tonapi';
 import { parseTxOpcode } from '../lib/opcodes';
@@ -38,16 +38,17 @@ const RECONNECT_BACKOFF = [1000, 2000, 4000, 8000, 15000, 30000];
  * `onFallback` fires when SSE has failed repeatedly so the parent can start polling.
  */
 export function useLiveFeed({ accounts, seed = [], onFallback }) {
-  const bufferRef = useRef(__makeBuffer(BUFFER_CAP));
+  const [buffer] = useState(() => __makeBuffer(BUFFER_CAP));
   const [version, setVersion] = useState(0); // bumps on every buffer change
   const [connected, setConnected] = useState(false);
 
   // Seed the buffer once on mount (or when seed array identity changes)
   useEffect(() => {
-    for (const tx of seed) bufferRef.current.push(tx);
+    for (const tx of seed) buffer.push(tx);
     setVersion(v => v + 1);
-  }, [seed]);
+  }, [seed, buffer]);
 
+  const accountsKey = accounts.join(',');
   useEffect(() => {
     if (!accounts || accounts.length === 0) return;
 
@@ -69,7 +70,7 @@ export function useLiveFeed({ accounts, seed = [], onFallback }) {
           const tx = await fetchTransactionByHash(hash);
           // Normalize shape to match toncenter format used elsewhere
           const normalized = normalizeTonapiTx(tx, payload.account_id);
-          bufferRef.current.push(normalized);
+          buffer.push(normalized);
           setVersion(v => v + 1);
           setConnected(true);
           attempt = 0;
@@ -94,10 +95,11 @@ export function useLiveFeed({ accounts, seed = [], onFallback }) {
       if (es) es.close();
       if (failTimer) clearTimeout(failTimer);
     };
-  }, [accounts.join(','), onFallback]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accountsKey, onFallback]);
 
   return {
-    buffer: bufferRef.current,
+    buffer,
     version,
     connected,
   };
