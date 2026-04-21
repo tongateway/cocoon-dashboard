@@ -1,6 +1,7 @@
-import { Box, Grid, HStack, Text, VStack } from '@chakra-ui/react';
+import { useMemo, useRef, useState } from 'react';
+import { Box, HStack, Text } from '@chakra-ui/react';
 import { WINDOWS } from './WindowToggle';
-import { computeSpend, workerRevenue, inWindow } from '../lib/rateMath';
+import { inWindow } from '../lib/rateMath';
 
 function bucket(txs, windowMs, bucketCount, valueFn) {
   const now = Date.now();
@@ -15,156 +16,248 @@ function bucket(txs, windowMs, bucketCount, valueFn) {
   return out;
 }
 
-function buildArea(values, w, h, pad = 4) {
-  if (values.length < 2) return '';
-  const max = Math.max(...values, 0.0001);
-  const step = (w - pad * 2) / (values.length - 1);
-  const pts = values.map((v, i) => {
-    const x = pad + i * step;
-    const y = h - pad - (v / max) * (h - pad * 2);
-    return `${x.toFixed(1)},${y.toFixed(1)}`;
-  });
-  return `M${pts[0]} L${pts.slice(1).join(' L')} L${(pad + (values.length - 1) * step).toFixed(1)},${(h - pad).toFixed(1)} L${pad},${(h - pad).toFixed(1)} Z`;
-}
-function buildLine(values, w, h, pad = 4) {
-  if (values.length < 2) return '';
-  const max = Math.max(...values, 0.0001);
-  const step = (w - pad * 2) / (values.length - 1);
-  return values.map((v, i) => {
-    const x = pad + i * step;
-    const y = h - pad - (v / max) * (h - pad * 2);
-    return `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`;
-  }).join(' ');
-}
+const W = 900, H = 280;
+const PAD = { l: 42, r: 16, t: 16, b: 28 };
+const innerW = W - PAD.l - PAD.r;
+const innerH = H - PAD.t - PAD.b;
 
-function Donut({ slices }) {
-  const total = slices.reduce((a, s) => a + s.value, 0) || 1;
-  const r = 42, circ = 2 * Math.PI * r;
-  const segments = slices.reduce((acc, s) => {
-    const len = (s.value / total) * circ;
-    acc.items.push({ color: s.color, len, offset: acc.runningOffset });
-    acc.runningOffset += len;
-    return acc;
-  }, { items: [], runningOffset: 0 }).items;
-  return (
-    <svg viewBox="0 0 110 110" width="96" height="96">
-      <circle cx="55" cy="55" r={r} fill="none" stroke="var(--line-faint)" strokeWidth="8" />
-      {segments.map((seg, i) => (
-        <circle key={i} cx="55" cy="55" r={r} fill="none" stroke={seg.color} strokeWidth="8"
-                strokeDasharray={`${seg.len} ${circ}`} strokeDashoffset={-seg.offset}
-                transform="rotate(-90 55 55)"
-                style={{ transition: 'stroke-dasharray 400ms var(--ease)' }} />
-      ))}
-    </svg>
-  );
-}
-
-// eslint-disable-next-line no-unused-vars
 export default function TrendCharts({ bufferRef, bufferVersion, window: windowId, computeMetrics }) {
-  const w = WINDOWS.find(x => x.id === windowId) || WINDOWS[0];
-  const windowMs = isFinite(w.ms) ? w.ms : 30 * 24 * 60 * 60 * 1000;
-  const allTxs = bufferRef.items();
-  const windowTxs = inWindow(allTxs, windowMs);
+  const wopt = WINDOWS.find(x => x.id === windowId) || WINDOWS[0];
+  const windowMs = isFinite(wopt.ms) ? wopt.ms : 30 * 24 * 60 * 60 * 1000;
+  const svgRef = useRef(null);
+  const wrapRef = useRef(null);
+  const [hoverIdx, setHoverIdx] = useState(null);
 
-  const isAll = windowId === 'all';
-  const dailySeries = isAll ? (computeMetrics?.daily || []) : [];
+  const { spendSeries, revSeries, tickFormatter, tickCount, rangeLabel } = useMemo(() => {
+    const isAll = windowId === 'all';
+    const dailySeries = isAll ? (computeMetrics?.daily || []) : [];
 
-  let spendBuckets, revBuckets, spend, rev, com;
-  if (isAll && dailySeries.length > 0) {
-    spendBuckets = dailySeries.map(d => d.computeSpendTon || 0);
-    revBuckets = dailySeries.map(d => d.workerRevenueTon || 0);
-    spend = computeMetrics.totals?.computeSpendTon || 0;
-    rev = computeMetrics.totals?.workerRevenueTon || 0;
-    com = Math.max(0, spend - rev);
-  } else {
-    const buckets = windowId === '1h' ? 30 : windowId === '24h' ? 24 : windowId === '7d' ? 24 * 7 : 30;
-    spendBuckets = bucket(windowTxs, windowMs, buckets, tx =>
-      (tx.contractRole === 'cocoon_proxy' && tx._op === 'client_proxy_request') ||
-      (tx.contractRole === 'cocoon_client' && tx._op === 'ext_client_charge_signed')
-        ? parseInt(tx.in_msg?.value || '0', 10) / 1e9 : 0);
-    revBuckets = bucket(windowTxs, windowMs, buckets, tx =>
-      tx.contractRole === 'cocoon_worker' && tx._op === 'ext_worker_payout_signed'
-        ? parseInt(tx.in_msg?.value || '0', 10) / 1e9 : 0);
-    spend = computeSpend(windowTxs) / 1e9;
-    rev = workerRevenue(windowTxs) / 1e9;
-    com = Math.max(0, spend - rev);
+    let spendSeries, revSeries, tickCount = 6, tickFormatter, rangeLabel;
+
+    if (isAll && dailySeries.length > 0) {
+      spendSeries = dailySeries.map(d => d.computeSpendTon || 0);
+      revSeries = dailySeries.map(d => d.workerRevenueTon || 0);
+      rangeLabel = 'all time';
+      tickFormatter = (i) => dailySeries[i]?.date?.slice(5) || '';
+    } else {
+      const allTxs = bufferRef.items();
+      const windowTxs = inWindow(allTxs, windowMs);
+      const buckets = windowId === '1h' ? 30 : windowId === '24h' ? 24 : windowId === '7d' ? 7 * 24 : 30;
+      spendSeries = bucket(windowTxs, windowMs, buckets, tx =>
+        (tx.contractRole === 'cocoon_proxy' && tx._op === 'client_proxy_request') ||
+        (tx.contractRole === 'cocoon_client' && tx._op === 'ext_client_charge_signed')
+          ? parseInt(tx.in_msg?.value || '0', 10) / 1e9 : 0);
+      revSeries = bucket(windowTxs, windowMs, buckets, tx =>
+        tx.contractRole === 'cocoon_worker' && tx._op === 'ext_worker_payout_signed'
+          ? parseInt(tx.in_msg?.value || '0', 10) / 1e9 : 0);
+      if (windowId === '1h') {
+        rangeLabel = 'last hour';
+        tickFormatter = (i, n) => `${Math.round((i / (n - 1)) * 60)}m`;
+      } else if (windowId === '24h') {
+        rangeLabel = 'last 24 hours';
+        tickCount = 6;
+        tickFormatter = (i, n) => `${String(Math.floor((i / (n - 1)) * 24)).padStart(2, '0')}:00`;
+      } else if (windowId === '7d') {
+        rangeLabel = 'last 7 days';
+        tickCount = 7;
+        tickFormatter = (i, n) => ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][Math.min(6, Math.floor((i / (n - 1)) * 7))];
+      }
+    }
+
+    return { spendSeries, revSeries, tickFormatter, tickCount, rangeLabel };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [windowId, bufferVersion, computeMetrics]);
+
+  const spendMax = Math.max(1e-6, ...spendSeries) * 1.08;
+  const revMax = Math.max(1e-6, ...revSeries) * 1.15;
+  const n = spendSeries.length;
+
+  const xAt = (i) => PAD.l + (i / (n - 1 || 1)) * innerW;
+  const ySpend = (v) => PAD.t + innerH - (v / spendMax) * innerH;
+  const yRev = (v) => PAD.t + innerH - (v / revMax) * innerH;
+
+  // Grid lines (horizontal y-axis ticks)
+  const gridY = 4;
+  const gridLines = [];
+  for (let i = 0; i <= gridY; i++) {
+    const y = PAD.t + (i / gridY) * innerH;
+    const val = spendMax * (1 - i / gridY);
+    gridLines.push(
+      <g key={`gy-${i}`}>
+        <line x1={PAD.l} x2={W - PAD.r} y1={y} y2={y}
+              stroke="var(--line-soft)" strokeWidth="1" shapeRendering="crispEdges" />
+        <text x={PAD.l - 8} y={y + 3} textAnchor="end"
+              fill="var(--fg-3)" fontSize="10" fontFamily="var(--ff-mono)">
+          {val >= 1000 ? `${(val / 1000).toFixed(1)}k` : val < 1 ? val.toFixed(2) : val.toFixed(1)}
+        </text>
+      </g>
+    );
   }
 
-  const subsidy = Math.max(0, rev - spend);
+  // X ticks
+  const xTicks = [];
+  for (let i = 0; i < tickCount; i++) {
+    const idx = Math.round((i / (tickCount - 1)) * (n - 1));
+    const x = xAt(idx);
+    xTicks.push(
+      <text key={`xt-${i}`} x={x} y={H - 8} textAnchor="middle"
+            fill="var(--fg-3)" fontSize="10" fontFamily="var(--ff-mono)">
+        {tickFormatter ? tickFormatter(idx, n) : ''}
+      </text>
+    );
+  }
+
+  // Area path for spend (primary)
+  const spendPts = spendSeries.map((v, i) => `${xAt(i).toFixed(1)},${ySpend(v).toFixed(1)}`);
+  const spendLine = 'M' + spendPts.join(' L');
+  const spendArea = `${spendLine} L${xAt(n - 1).toFixed(1)},${PAD.t + innerH} L${xAt(0).toFixed(1)},${PAD.t + innerH} Z`;
+
+  // Secondary line (worker revenue, dashed like design's p95 latency line)
+  const revPts = revSeries.map((v, i) => `${xAt(i).toFixed(1)},${yRev(v).toFixed(1)}`);
+  const revLine = 'M' + revPts.join(' L');
+
+  // Averages for legend
+  const avgSpend = spendSeries.reduce((a, b) => a + b, 0) / n;
+  const avgRev = revSeries.reduce((a, b) => a + b, 0) / n;
+
+  // Hover handler
+  const handleMove = (e) => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const rect = svg.getBoundingClientRect();
+    const xSvg = ((e.clientX - rect.left) / rect.width) * W;
+    if (xSvg < PAD.l || xSvg > W - PAD.r) { setHoverIdx(null); return; }
+    const idx = Math.round(((xSvg - PAD.l) / innerW) * (n - 1));
+    setHoverIdx(Math.max(0, Math.min(n - 1, idx)));
+  };
+
+  const hoverVals = hoverIdx != null ? { spend: spendSeries[hoverIdx], rev: revSeries[hoverIdx] } : null;
+  const hoverX = hoverIdx != null ? xAt(hoverIdx) : 0;
+  const tooltipPct = hoverIdx != null ? (hoverX / W) * 100 : 0;
 
   return (
-    <Grid templateColumns={{ base: '1fr', lg: '2fr 1fr' }} gap={3} className="fade-in">
-      <Panel title="TON flow" subtitle={`compute spend vs worker payouts · ${w.label}`}>
-        <svg viewBox="0 0 400 120" width="100%" height="120" preserveAspectRatio="none" style={{ display: 'block', marginTop: '12px' }}>
+    <Box id="metrics"
+      sx={{
+        background: 'var(--bg-1)',
+        border: '1px solid var(--line-soft)',
+        borderRadius: 'var(--radius-lg)',
+        marginBottom: '20px',
+        overflow: 'hidden',
+      }}
+    >
+      {/* Section head */}
+      <Box sx={{
+        padding: '14px 18px',
+        borderBottom: '1px solid var(--line-soft)',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '12px',
+      }}>
+        <Box>
+          <Text fontSize="13px" fontWeight="600" letterSpacing="-0.005em" color="var(--fg-0)">
+            Network throughput
+          </Text>
+          <Text fontSize="12px" color="var(--fg-2)" mt="2px">
+            Compute spend + worker payouts · {rangeLabel || wopt.label}
+          </Text>
+        </Box>
+        <Box flex={1} />
+        <HStack spacing="14px" fontSize="11.5px" color="var(--fg-1)">
+          <HStack spacing="6px">
+            <Box w="8px" h="8px" borderRadius="2px" bg="var(--accent)" />
+            <Text>Compute</Text>
+            <Text className="mono" color="var(--fg-0)">{avgSpend < 1 ? avgSpend.toFixed(3) : avgSpend.toFixed(2)} TON avg</Text>
+          </HStack>
+          <HStack spacing="6px">
+            <Box w="8px" h="2px" bg="var(--info)" />
+            <Text>Payouts</Text>
+            <Text className="mono" color="var(--fg-0)">{avgRev < 1 ? avgRev.toFixed(3) : avgRev.toFixed(2)} TON avg</Text>
+          </HStack>
+        </HStack>
+      </Box>
+
+      <Box
+        ref={wrapRef}
+        sx={{ padding: '8px 16px 16px', position: 'relative' }}
+        onMouseMove={handleMove}
+        onMouseLeave={() => setHoverIdx(null)}
+      >
+        <svg
+          ref={svgRef}
+          viewBox={`0 0 ${W} ${H}`}
+          preserveAspectRatio="none"
+          style={{ width: '100%', height: '280px', display: 'block' }}
+        >
           <defs>
-            <linearGradient id="gSpend" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#22c55e" stopOpacity="0.35" />
-              <stop offset="100%" stopColor="#22c55e" stopOpacity="0" />
-            </linearGradient>
-            <linearGradient id="gRev" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#60a5fa" stopOpacity="0.3" />
-              <stop offset="100%" stopColor="#60a5fa" stopOpacity="0" />
+            <linearGradient id="gAreaSpend" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="oklch(85% 0.18 135)" stopOpacity="0.25" />
+              <stop offset="100%" stopColor="oklch(85% 0.18 135)" stopOpacity="0" />
             </linearGradient>
           </defs>
-          <line x1="4" y1="116" x2="396" y2="116" stroke="var(--line-faint)" strokeWidth="0.5" />
-          <path d={buildArea(spendBuckets, 400, 120)} fill="url(#gSpend)" />
-          <path d={buildLine(spendBuckets, 400, 120)} fill="none" stroke="var(--accent)" strokeWidth="1.4" strokeLinejoin="round" />
-          <path d={buildArea(revBuckets, 400, 120)} fill="url(#gRev)" />
-          <path d={buildLine(revBuckets, 400, 120)} fill="none" stroke="var(--info)" strokeWidth="1.4" strokeLinejoin="round" />
+
+          {gridLines}
+          {xTicks}
+
+          <path d={spendArea} fill="url(#gAreaSpend)" />
+          <path d={spendLine} stroke="var(--accent)" strokeWidth="1.5" fill="none" strokeLinejoin="round" />
+          <path d={revLine} stroke="var(--info)" strokeWidth="1.5" fill="none" strokeDasharray="3 3" strokeLinejoin="round" />
+
+          {hoverIdx != null && (
+            <g>
+              <line x1={hoverX} x2={hoverX} y1={PAD.t} y2={PAD.t + innerH}
+                    stroke="var(--fg-2)" strokeWidth="1" strokeDasharray="2 3" />
+              <circle cx={hoverX} cy={ySpend(hoverVals.spend)} r="4"
+                      fill="var(--bg-0)" stroke="var(--accent)" strokeWidth="2" />
+              <circle cx={hoverX} cy={yRev(hoverVals.rev)} r="3.5"
+                      fill="var(--bg-0)" stroke="var(--info)" strokeWidth="2" />
+            </g>
+          )}
         </svg>
 
-        <HStack spacing={5} mt={3} fontSize="11px" fontFamily="var(--ff-mono)" color="var(--fg-dim)" flexWrap="wrap">
-          <Legend dot="var(--accent)" label="spend" value={`${spend.toFixed(2)} TON`} />
-          <Legend dot="var(--info)" label="payouts" value={`${rev.toFixed(2)} TON`} />
-        </HStack>
-      </Panel>
-
-      <Panel title="Split" subtitle={`where TON settles · ${w.label}`}>
-        <HStack spacing={4} mt={2} align="center">
-          <Donut slices={[
-            { color: 'var(--info)', value: rev },
-            { color: 'var(--warn)', value: Math.max(com, subsidy) },
-          ]} />
-          <VStack align="stretch" spacing={2} fontFamily="var(--ff-mono)" fontSize="12px" flex={1}>
-            <HStack justify="space-between">
-              <Legend dot="var(--info)" label="workers" />
-              <Text color="var(--fg)" fontWeight="500">
-                {rev + Math.max(com, subsidy) > 0 ? Math.round((rev / (rev + Math.max(com, subsidy))) * 100) : 0}%
+        {hoverIdx != null && (
+          <Box
+            sx={{
+              position: 'absolute',
+              left: `${tooltipPct}%`,
+              top: `${(ySpend(hoverVals.spend) / H) * 100}%`,
+              transform: `translate(${tooltipPct > 70 ? 'calc(-100% - 12px)' : '12px'}, -100%)`,
+              marginTop: '-10px',
+              background: 'var(--bg-2)',
+              border: '1px solid var(--line)',
+              borderRadius: '6px',
+              padding: '8px 10px',
+              fontSize: '11.5px',
+              color: 'var(--fg-0)',
+              pointerEvents: 'none',
+              minWidth: '180px',
+              boxShadow: '0 8px 20px -4px rgba(0,0,0,0.4)',
+              zIndex: 5,
+            }}
+          >
+            <Text className="mono" fontSize="10.5px" color="var(--fg-2)" mb="4px">
+              {tickFormatter ? tickFormatter(hoverIdx, n) : ''}
+            </Text>
+            <HStack justify="space-between" py="2px">
+              <HStack spacing="6px" color="var(--fg-1)">
+                <Box w="8px" h="8px" borderRadius="2px" bg="var(--accent)" />
+                <Text>Compute</Text>
+              </HStack>
+              <Text className="mono" fontWeight="500">
+                {hoverVals.spend < 1 ? hoverVals.spend.toFixed(4) : hoverVals.spend.toFixed(2)} TON
               </Text>
             </HStack>
-            <HStack justify="space-between">
-              <Legend dot="var(--warn)" label={subsidy > com ? 'subsidy' : 'commission'} />
-              <Text color="var(--fg)" fontWeight="500">
-                {rev + Math.max(com, subsidy) > 0 ? Math.round((Math.max(com, subsidy) / (rev + Math.max(com, subsidy))) * 100) : 0}%
+            <HStack justify="space-between" py="2px">
+              <HStack spacing="6px" color="var(--fg-1)">
+                <Box w="8px" h="2px" bg="var(--info)" />
+                <Text>Payouts</Text>
+              </HStack>
+              <Text className="mono" fontWeight="500">
+                {hoverVals.rev < 1 ? hoverVals.rev.toFixed(4) : hoverVals.rev.toFixed(2)} TON
               </Text>
             </HStack>
-          </VStack>
-        </HStack>
-      </Panel>
-    </Grid>
-  );
-}
-
-function Panel({ title, subtitle, children }) {
-  return (
-    <Box bg="var(--bg-elev-1)" border="1px solid var(--line-faint)" borderRadius="var(--radius)" p={4}>
-      <Text fontSize="13px" fontWeight="600" color="var(--fg)" letterSpacing="-0.005em">
-        {title}
-      </Text>
-      <Text fontSize="11px" color="var(--fg-dim)" mt={0.5}>
-        {subtitle}
-      </Text>
-      {children}
+          </Box>
+        )}
+      </Box>
     </Box>
-  );
-}
-
-function Legend({ dot, label, value }) {
-  return (
-    <HStack spacing={1.5}>
-      <Box w="8px" h="8px" borderRadius="2px" bg={dot} />
-      <Text color="var(--fg-dim)">{label}</Text>
-      {value && <Text color="var(--fg)">· {value}</Text>}
-    </HStack>
   );
 }
