@@ -1,112 +1,104 @@
 /* ============================================================
-   Cocoon Network — dev-tool design system (Linear × Supabase × Vercel)
-   Clean, compact, information-dense.
+   Cocoon Network — design tokens ported from Claude Design
+   handoff (Linear-inspired, dark mode, developer-focused).
    ============================================================ */
 
 :root {
-  /* Surfaces */
-  --bg:           #09090b;
-  --bg-elev-1:    #0e0e10;
-  --bg-elev-2:    #131315;
-  --bg-hover:     rgba(255, 255, 255, 0.03);
+  /* Canvas */
+  --bg-0: oklch(16% 0.005 260);        /* page */
+  --bg-1: oklch(18.5% 0.006 260);      /* panel */
+  --bg-2: oklch(21% 0.007 260);        /* elevated */
+  --bg-3: oklch(24% 0.008 260);        /* hover */
+  --bg-row-hover: oklch(22% 0.007 260);
 
-  /* Borders */
-  --line-faint:   rgba(255, 255, 255, 0.06);
-  --line:         rgba(255, 255, 255, 0.09);
-  --line-strong:  rgba(255, 255, 255, 0.14);
+  --line: oklch(27% 0.008 260);
+  --line-soft: oklch(23% 0.007 260);
 
-  /* Text */
-  --fg:           #fafafa;
-  --fg-mid:       #a1a1a6;
-  --fg-dim:       #71717a;
-  --fg-faint:     #52525b;
+  --fg-0: oklch(96% 0.005 260);        /* primary text */
+  --fg-1: oklch(78% 0.008 260);        /* secondary */
+  --fg-2: oklch(60% 0.008 260);        /* tertiary */
+  --fg-3: oklch(44% 0.008 260);        /* quaternary / axis */
 
-  /* Accent — subtle emerald (developer green, not neon) */
-  --accent:       #22c55e;
-  --accent-dim:   #16a34a;
-  --accent-wash:  rgba(34, 197, 94, 0.08);
-  --accent-line:  rgba(34, 197, 94, 0.25);
+  /* Accents — matched chroma, varying hue */
+  --ok:   oklch(85% 0.18 135);
+  --ok-wash: oklch(85% 0.18 135 / 0.08);
+  --ok-ring: oklch(85% 0.18 135 / 0.15);
+  --ok-edge: oklch(85% 0.18 135 / 0.30);
 
-  /* Semantic */
-  --ok:           #22c55e;
-  --warn:         #f59e0b;
-  --warn-wash:    rgba(245, 158, 11, 0.08);
-  --err:          #f43f5e;
-  --err-wash:     rgba(244, 63, 94, 0.08);
-  --info:         #60a5fa;
-  --violet:       #a78bfa;
+  --warn: oklch(82% 0.16 78);
+  --warn-wash: oklch(82% 0.16 78 / 0.08);
+  --warn-ring: oklch(82% 0.16 78 / 0.15);
+  --warn-edge: oklch(82% 0.16 78 / 0.30);
+
+  --err:  oklch(72% 0.17 22);
+  --err-wash: oklch(72% 0.17 22 / 0.08);
+  --err-ring: oklch(72% 0.17 22 / 0.15);
+  --err-edge: oklch(72% 0.17 22 / 0.30);
+
+  --info: oklch(78% 0.12 240);
+  --info-wash: oklch(78% 0.12 240 / 0.08);
+
+  --accent: var(--ok);
+
+  --radius: 6px;
+  --radius-lg: 10px;
+
+  --row-h: 44px;
 
   /* Type */
-  --ff-sans:  'Geist', -apple-system, 'Segoe UI', 'Helvetica Neue', sans-serif;
-  --ff-mono:  'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+  --ff-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --ff-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
 
   /* Motion */
-  --ease:  cubic-bezier(.22, .61, .36, 1);
-
-  /* Radii & sizes */
-  --radius:     6px;
-  --radius-sm:  4px;
-  --radius-lg:  10px;
+  --ease: cubic-bezier(.22, .61, .36, 1);
+  --ease-drawer: cubic-bezier(.22, 1, .36, 1);
 }
 
 * { box-sizing: border-box; }
 
-html, body {
-  background: var(--bg);
-  color: var(--fg);
+html, body { height: 100%; }
+body {
+  margin: 0;
+  background: var(--bg-0);
+  color: var(--fg-0);
   font-family: var(--ff-sans);
-  font-size: 14px;
-  font-weight: 400;
+  font-size: 13px;
   line-height: 1.5;
-  letter-spacing: -0.005em;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  text-rendering: optimizeLegibility;
+  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11', 'ss01';
+  letter-spacing: -0.005em;
 }
 
-body {
-  min-height: 100vh;
-  overflow-x: hidden;
-}
+#root { min-height: 100vh; }
 
-#root {
-  min-height: 100vh;
+.mono {
+  font-family: var(--ff-mono);
+  font-feature-settings: 'zero';
 }
-
-/* Utility — hairline rule */
-.hr { height: 1px; background: var(--line-faint); width: 100%; }
 
 /* Scrollbar */
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-  background: var(--line);
+  background: var(--line-soft);
   border-radius: 5px;
-  border: 2px solid var(--bg);
+  border: 2px solid var(--bg-0);
 }
-::-webkit-scrollbar-thumb:hover { background: var(--line-strong); }
+::-webkit-scrollbar-thumb:hover { background: var(--line); }
 
 /* Selection */
-::selection { background: var(--accent); color: #fff; }
-
-/* Focus ring helper */
-.focus-ring:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
+::selection { background: var(--accent); color: var(--bg-0); }
 
 /* Animations */
 @keyframes pulse-dot {
-  0%   { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.5); }
-  70%  { box-shadow: 0 0 0 6px rgba(34, 197, 94, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+  0%, 100% { box-shadow: 0 0 0 3px var(--ok-ring); }
+  50% { box-shadow: 0 0 0 5px oklch(85% 0.18 135 / 0.06); }
 }
-
 @keyframes fade-in {
   from { opacity: 0; transform: translateY(4px); }
-  to   { opacity: 1; transform: translateY(0); }
+  to { opacity: 1; transform: translateY(0); }
 }
-
 .fade-in { animation: fade-in .25s var(--ease) both; }
 
 button { font-family: inherit; }

@@ -4,36 +4,41 @@ import { truncateAddress } from '../lib/formatters';
 
 export default function AddressCell({ address }) {
   const { hasCopied, onCopy } = useClipboard(address || '');
-  if (!address) return <Text color="var(--fg-faint)">—</Text>;
+  if (!address) return <Text color="var(--fg-3)">—</Text>;
 
   return (
-    <HStack spacing={1}>
-      <Tooltip label={address} placement="top" hasArrow bg="var(--bg-elev-2)" color="var(--fg)"
+    <HStack spacing="2px">
+      <Tooltip label={address} placement="top" hasArrow
+               bg="var(--bg-2)" color="var(--fg-0)"
                borderColor="var(--line)" borderWidth="1px" fontSize="11px" fontFamily="var(--ff-mono)">
         <Link
           as={RouterLink}
           to={`/address/${encodeURIComponent(address)}`}
-          color="var(--fg-mid)"
-          fontFamily="var(--ff-mono)"
-          fontSize="12px"
-          _hover={{ color: 'var(--accent)' }}
-          sx={{ transition: 'color 120ms var(--ease)' }}
+          sx={{
+            color: 'var(--fg-1)',
+            fontFamily: 'var(--ff-mono)',
+            fontSize: '12px',
+            _hover: { color: 'var(--accent)', textDecoration: 'none' },
+            transition: 'color 120ms var(--ease)',
+          }}
         >
           {truncateAddress(address)}
         </Link>
       </Tooltip>
       <Tooltip label={hasCopied ? 'Copied' : 'Copy'} placement="top" hasArrow
-               bg="var(--bg-elev-2)" color="var(--fg)" borderColor="var(--line)" borderWidth="1px" fontSize="11px">
+               bg="var(--bg-2)" color="var(--fg-0)"
+               borderColor="var(--line)" borderWidth="1px" fontSize="11px">
         <IconButton
           icon={<CopyIcon />}
           size="xs"
           variant="ghost"
-          color="var(--fg-faint)"
-          _hover={{ color: 'var(--fg)', bg: 'transparent' }}
-          onClick={onCopy}
-          aria-label="Copy"
-          minW="16px"
-          h="16px"
+          sx={{
+            color: 'var(--fg-3)',
+            minW: '16px', h: '16px',
+            _hover: { color: 'var(--fg-0)', background: 'transparent' },
+          }}
+          onClick={(e) => { e.stopPropagation(); onCopy(); }}
+          aria-label="Copy address"
         />
       </Tooltip>
     </HStack>
