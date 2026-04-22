@@ -4,6 +4,7 @@ const CODE_TYPES = {
   'cfd7fb56c93c4e68': 'cocoon_root',
   '4693d2a95d0e55d4': 'cocoon_proxy',
   '5598b6810bed2266': 'cocoon_proxy',
+  '593f90160f380712': 'cocoon_proxy',   // added after user report (EQDGkQM7…E3cJ2y)
   '3204b6ab0ec40172': 'cocoon_client',
   '81b712e7d26313be': 'cocoon_client',
   '32f26bd974265be9': 'cocoon_client',

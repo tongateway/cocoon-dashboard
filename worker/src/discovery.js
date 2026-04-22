@@ -7,6 +7,14 @@ import { toEQ } from './address.js';
 
 const MAX_CLASSIFY_PER_RUN = 150;
 
+// Addresses guaranteed to be crawled each cycle even if they don't appear
+// in the root's recent tx window or peer through a known cocoon contract.
+// Useful for proxies/workers that registered long ago and have since only
+// interacted with clients we haven't seen yet.
+const SEED_ADDRESSES = [
+  'EQDGkQM7RIWp6yGW79i8oV3zJ-vdnpV68pdZ2W8mrpE3cJ2y', // proxy flagged by user 2026-04
+];
+
 export async function runDiscovery(tc, kv, rootContract) {
   console.log('[discover] start');
   const result = { root: {}, proxies: [], clients: [], workers: [], cocoonWallets: [], transactions: [] };
@@ -41,7 +49,13 @@ export async function runDiscovery(tc, kv, rootContract) {
     }
   }
 
-  console.log(`[discover] ${opcodeAddrs.size} opcode addrs, 2-hop scanning...`);
+  // Seed any explicitly-known addresses that might not appear in root's recent
+  // tx window (old proxies/workers that registered long ago).
+  for (const seed of SEED_ADDRESSES) {
+    opcodeAddrs.add(toEQ(seed));
+  }
+
+  console.log(`[discover] ${opcodeAddrs.size} opcode addrs (incl. ${SEED_ADDRESSES.length} seeded), 2-hop scanning...`);
 
   // 3. Classify opcode addresses + their peers (2-hop)
   for (const addr of opcodeAddrs) {
@@ -242,10 +256,50 @@ function formatNum(n) {
   return String(n);
 }
 
+// Opcodes that, when received (in_msg), uniquely identify a Cocoon contract role.
+// Used as a fallback when the code hash isn't in our known list — so new proxy/
+// worker/client builds get classified automatically without needing a code-table
+// update first. (If the OUTCOME is wrong, add the hash to CODE_TYPES to override.)
+const ROLE_FROM_INCOMING_OP = {
+  'client_proxy_request':     'cocoon_proxy',
+  'client_proxy_top_up':      'cocoon_proxy',
+  'ext_proxy_increase_stake': 'cocoon_proxy',
+  'ext_proxy_payout':         'cocoon_proxy',
+  'proxy_save_state':         'cocoon_proxy',
+  'ext_worker_payout_signed': 'cocoon_worker',
+  'worker_proxy_request':     'cocoon_worker',
+  'worker_proxy_payout':      'cocoon_worker',
+  'owner_worker_register':    'cocoon_worker',
+  'ext_client_charge_signed': 'cocoon_client',
+  'ext_client_top_up':        'cocoon_client',
+  'ext_client_refund_signed': 'cocoon_client',
+  'owner_client_reopen':      'cocoon_client',
+  'owner_client_register':    'cocoon_client',
+  'client_proxy_refund':      'cocoon_client',
+};
+
 async function classifyAddr(tc, addr) {
   const info = await tc.getAddressInfo(addr);
-  const type = await classifyByCode(info.code);
-  return { address: addr, balance: info.balance, state: info.state, type, codeHash: await getCodeHash(info.code) };
+  const codeHash = await getCodeHash(info.code);
+  let type = await classifyByCode(info.code);
+
+  // Opcode-based fallback for contracts whose code hash we don't know yet.
+  if (type === 'unknown' && info.code) {
+    try {
+      const txs = await tc.getAllTxs(addr, 2);
+      for (const tx of txs) {
+        const op = extractOp(tx.in_msg?.msg_data?.body);
+        const role = op && ROLE_FROM_INCOMING_OP[op];
+        if (role) {
+          console.log(`[classify] ${addr} → ${role} via opcode '${op}' (hash ${codeHash} unknown)`);
+          type = role;
+          break;
+        }
+      }
+    } catch {}
+  }
+
+  return { address: addr, balance: info.balance, state: info.state, type, codeHash };
 }
 
 function addToResult(result, classified, parentProxy, queue) {
