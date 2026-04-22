@@ -1,6 +1,18 @@
 import { useEffect, useState } from 'react';
+import { Address } from '@ton/core';
 import { sseUrl, fetchTransactionByHash } from '../api/tonapi';
 import { parseTxOpcode } from '../lib/opcodes';
+
+// tonapi SSE emits account_id in raw format (0:hex…). Our graph Maps are keyed on
+// UQ (non-bounceable, urlSafe) format. Normalize so tagRole lookups hit.
+export function toUQ(addr) {
+  if (!addr) return addr;
+  try {
+    return Address.parse(addr).toString({ urlSafe: true, bounceable: false });
+  } catch {
+    return addr;
+  }
+}
 
 // Pure-browser hex → base64 (no Buffer/Node polyfill needed).
 function hexToBase64(hex) {
@@ -127,14 +139,15 @@ function normalizeTonapiTx(tonapiTx, accountId) {
     utime: tonapiTx.utime,
     transaction_id: { lt: tonapiTx.lt, hash: tonapiTx.hash },
     fee: String(tonapiTx.total_fees || 0),
-    address: { account_address: accountId },
+    // Normalize to UQ to match graph Map keys (tonapi sends raw "0:hex").
+    address: { account_address: toUQ(accountId) },
     in_msg: {
-      source: tonapiTx.in_msg?.source?.address || '',
+      source: toUQ(tonapiTx.in_msg?.source?.address || ''),
       value: String(tonapiTx.in_msg?.value || 0),
       msg_data: { body: inMsgBase64 },
     },
     out_msgs: (tonapiTx.out_msgs || []).map(m => ({
-      destination: m.destination?.address || '',
+      destination: toUQ(m.destination?.address || ''),
       value: String(m.value || 0),
       msg_data: { body: hexToBase64(m.raw_body) },
     })),

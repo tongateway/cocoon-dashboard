@@ -46,11 +46,13 @@ export default {
     const kv = env.COCOON_KV;
 
     try {
-      // Discovery — serve from KV cache
+      // Discovery — serve from KV cache.
+      // TTL matches the cron interval (300s) so a fresh cache is expected by
+      // the next cron tick; if cron misses, an inline discovery refills with
+      // the same TTL (no weird "drift" between inline and cron writes).
       if (path === '/api/discover') {
         const cached = await kv.get('discovery_cache', 'json');
         if (cached) return jsonResponse(cached);
-        // No cache — run discovery inline (first time only)
         const result = await runDiscovery(tc, kv, ROOT_CONTRACT);
         await kv.put('discovery_cache', JSON.stringify(result), { expirationTtl: 300 });
         return jsonResponse(result);
@@ -119,7 +121,7 @@ export default {
     const kv = env.COCOON_KV;
     try {
       const result = await runDiscovery(tc, kv, ROOT_CONTRACT);
-      await kv.put('discovery_cache', JSON.stringify(result), { expirationTtl: 600 });
+      await kv.put('discovery_cache', JSON.stringify(result), { expirationTtl: 300 });
       console.log(`[cron] Done: ${result.proxies.length}P ${result.clients.length}C ${result.workers.length}W`);
     } catch (e) {
       console.error('[cron] Failed:', e.message);

@@ -14,7 +14,6 @@ function buildGraph(raw) {
     clients: new Map(),
     workers: new Map(),
     cocoonWallets: new Map(),
-    relatedWallets: new Map(),
     seedTxs: raw.transactions || [],
     computeMetrics: raw.computeMetrics || null,
     pricePerToken: raw.root?.config?.pricePerToken || 20,
@@ -27,7 +26,6 @@ function buildGraph(raw) {
   for (const c of raw.clients || []) graph.clients.set(c.address, c);
   for (const w of raw.workers || []) graph.workers.set(w.address, w);
   for (const cw of raw.cocoonWallets || []) graph.cocoonWallets.set(cw.address, cw);
-  for (const rw of raw.relatedWallets || []) graph.relatedWallets.set(rw.address, rw);
   return graph;
 }
 
@@ -78,9 +76,19 @@ export function useNetworkData() {
     return () => clearInterval(interval);
   }, [refresh]);
 
+  // Subscribe SSE to every Cocoon-owned contract: root + proxies + clients +
+  // workers + cocoonWallets. Previously only root+proxies streamed live, so
+  // worker payouts and client charges only appeared via the 2-min discovery
+  // refresh. Total expected: ~110 accounts which is well within tonapi's limit.
   const accounts = useMemo(() => {
     if (!graph) return [];
-    return [graph.root?.address, ...graph.proxies.keys()].filter(Boolean);
+    return [
+      graph.root?.address,
+      ...graph.proxies.keys(),
+      ...graph.clients.keys(),
+      ...graph.workers.keys(),
+      ...graph.cocoonWallets.keys(),
+    ].filter(Boolean);
   }, [graph]);
 
   const { buffer, version, connected } = useLiveFeed({

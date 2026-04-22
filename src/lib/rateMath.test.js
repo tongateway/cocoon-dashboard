@@ -105,16 +105,26 @@ describe('activeWorkers', () => {
 });
 
 describe('activeClients', () => {
-  it('counts unique client addresses with charge ops', () => {
+  it('counts unique cocoon_client contract addresses with ext_client_charge_signed', () => {
     const txs = [
-      { contractRole: 'cocoon_proxy', _op: 'client_proxy_request',
-        in_msg: { source: 'EQC1', value: '100', msg_data: {} }, out_msgs: [] },
       { contractRole: 'cocoon_client', _op: 'ext_client_charge_signed',
-        address: { account_address: 'EQC2' }, in_msg: { value: '50', msg_data: {} }, out_msgs: [] },
-      { contractRole: 'cocoon_proxy', _op: 'client_proxy_request',
-        in_msg: { source: 'EQC1', value: '100', msg_data: {} }, out_msgs: [] }, // dup
+        address: { account_address: 'EQCONTRACT1' }, in_msg: { value: '50', msg_data: {} }, out_msgs: [] },
+      { contractRole: 'cocoon_client', _op: 'ext_client_charge_signed',
+        address: { account_address: 'EQCONTRACT2' }, in_msg: { value: '60', msg_data: {} }, out_msgs: [] },
+      { contractRole: 'cocoon_client', _op: 'ext_client_charge_signed',
+        address: { account_address: 'EQCONTRACT1' }, in_msg: { value: '70', msg_data: {} }, out_msgs: [] }, // dup contract
     ];
     expect(activeClients(txs)).toBe(2);
+  });
+
+  it('ignores proxy-side client_proxy_request (wallet addresses, not contract addresses)', () => {
+    const txs = [
+      { contractRole: 'cocoon_proxy', _op: 'client_proxy_request',
+        in_msg: { source: 'EQWALLET1', value: '100', msg_data: {} }, out_msgs: [] },
+      { contractRole: 'cocoon_proxy', _op: 'client_proxy_request',
+        in_msg: { source: 'EQWALLET2', value: '100', msg_data: {} }, out_msgs: [] },
+    ];
+    expect(activeClients(txs)).toBe(0);
   });
 });
 
