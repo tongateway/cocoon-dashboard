@@ -9,7 +9,9 @@ const MAX_CLASSIFY_PER_RUN = 150;
 
 export async function runDiscovery(tc, kv, rootContract) {
   console.log('[discover] start');
-  const result = { root: {}, proxies: [], clients: [], workers: [], cocoonWallets: [], relatedWallets: [], transactions: [] };
+  const result = { root: {}, proxies: [], clients: [], workers: [], cocoonWallets: [], transactions: [] };
+  // Silent-failure counters surfaced in final log line.
+  const silent = { classify: 0, crawl: 0, peerCrawl: 0 };
 
   // 1. Root info + all txs (8 pages ≈ 400 recent txs for opcode routing)
   const rootInfo = await tc.getAddressInfo(rootContract);
@@ -47,7 +49,7 @@ export async function runDiscovery(tc, kv, rootContract) {
     try {
       const classified = await classifyAddr(tc, addr);
       addToResult(result, classified, null, cocoonQueue);
-    } catch {}
+    } catch { silent.classify++; }
 
     try {
       const txs = await tc.getAllTxs(addr, 3);
@@ -62,9 +64,9 @@ export async function runDiscovery(tc, kv, rootContract) {
         try {
           const classified = await classifyAddr(tc, p);
           addToResult(result, classified, null, cocoonQueue);
-        } catch {}
+        } catch { silent.peerCrawl++; }
       }
-    } catch {}
+    } catch { silent.peerCrawl++; }
   }
 
   console.log(`[discover] after 2-hop: ${result.proxies.length}P ${result.clients.length}C ${result.workers.length}W`);
@@ -93,12 +95,15 @@ export async function runDiscovery(tc, kv, rootContract) {
           const c = await classifyAddr(tc, a);
           addToResult(result, c, type === 'cocoon_proxy' ? addr : null, cocoonQueue);
           classified++;
-        } catch {}
+        } catch { silent.classify++; }
       }
-    } catch {}
+    } catch { silent.crawl++; }
   }
 
-  // 5. Load known addresses from KV and check any not yet visited
+  // 5. Load known addresses from KV and check any not yet visited — but only
+  // re-classify addrs that turned out to be cocoon_* this round, so the list
+  // self-prunes. (Previously we appended forever, which left 778 mis-flagged
+  // Telegram Wallets causing ~800 extra toncenter calls per cron.)
   try {
     const knownRaw = await kv.get('known_cocoon_addrs', 'json');
     const known = knownRaw || [];
@@ -110,12 +115,13 @@ export async function runDiscovery(tc, kv, rootContract) {
         const c = await classifyAddr(tc, addr);
         addToResult(result, c, null, cocoonQueue);
         if (c.type.startsWith('cocoon_')) newFromKnown++;
-      } catch {}
+      } catch { silent.classify++; }
     }
     if (newFromKnown > 0) console.log(`[discover] ${newFromKnown} from known addrs`);
   } catch {}
 
-  // Save known addresses
+  // Rebuild known_cocoon_addrs from THIS RUN's cocoon results only.
+  // Entries whose latest classification stopped being cocoon_* fall off naturally.
   const allCocoonAddrs = [
     ...result.proxies.map(p => p.address),
     ...result.clients.map(c => c.address),
@@ -123,8 +129,7 @@ export async function runDiscovery(tc, kv, rootContract) {
     ...result.cocoonWallets.map(w => w.address),
   ];
   try {
-    const existing = (await kv.get('known_cocoon_addrs', 'json')) || [];
-    await kv.put('known_cocoon_addrs', JSON.stringify([...new Set([...existing, ...allCocoonAddrs])]));
+    await kv.put('known_cocoon_addrs', JSON.stringify([...new Set(allCocoonAddrs)]));
   } catch {}
 
   // Dedup txs
@@ -144,7 +149,7 @@ export async function runDiscovery(tc, kv, rootContract) {
       const txs = await tc.getAllTxs(contract.address, 5);
       contract.lastActivity = txs[0]?.utime || 0;
       result.transactions.push(...txs.map(tx => ({ ...tx, contractRole: contract.type })));
-    } catch {}
+    } catch { silent.crawl++; }
   }
 
   // 7. Compute real token/revenue metrics from opcodes + contract types
@@ -224,6 +229,9 @@ export async function runDiscovery(tc, kv, rootContract) {
 
   console.log(`[discover] compute: ${result.computeMetrics.totals.computeSpendTon.toFixed(2)} TON spent, ~${formatNum(result.computeMetrics.totals.tokensMix)} tokens (mix)`);
   console.log(`[discover] done: ${result.proxies.length}P ${result.clients.length}C ${result.workers.length}W ${result.cocoonWallets.length}CW`);
+  if (silent.classify || silent.crawl || silent.peerCrawl) {
+    console.log(`[discover] silent failures: classify=${silent.classify} crawl=${silent.crawl} peerCrawl=${silent.peerCrawl}`);
+  }
   return result;
 }
 
@@ -280,13 +288,7 @@ function addToResult(result, classified, parentProxy, queue) {
         queue.push({ address, type });
       }
       break;
-    default:
-      if (parentProxy && type !== 'no_code') {
-        if (!result.relatedWallets.find(w => w.address === address)) {
-          entry.proxyAddress = parentProxy;
-          result.relatedWallets.push(entry);
-        }
-      }
+    // default: non-cocoon addresses are not recorded (frontend doesn't display them)
   }
 }
 

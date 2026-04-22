@@ -55,17 +55,16 @@ export function activeWorkers(txs) {
   return set.size;
 }
 
+// Counts unique CLIENT CONTRACT addresses that were charged for inference.
+// Uses only the client-contract perspective (ext_client_charge_signed on cocoon_client),
+// so the denominator "N / graph.clients.size" compares like-for-like (contracts to contracts).
 export function activeClients(txs) {
   const set = new Set();
   for (const tx of txs) {
-    const op = opName(tx);
-    if (tx.contractRole === 'cocoon_proxy' && op === 'client_proxy_request') {
-      const src = tx.in_msg?.source;
-      if (src) set.add(src);
-    } else if (tx.contractRole === 'cocoon_client' && op === 'ext_client_charge_signed') {
-      const addr = tx.address?.account_address;
-      if (addr) set.add(addr);
-    }
+    if (tx.contractRole !== 'cocoon_client') continue;
+    if (opName(tx) !== 'ext_client_charge_signed') continue;
+    const addr = tx.address?.account_address;
+    if (addr) set.add(addr);
   }
   return set.size;
 }
